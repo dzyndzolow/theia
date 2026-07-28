@@ -125,5 +125,8 @@
     "ms-vscode.js-debug-companion",
     "vscode.extension-editing",
     "ms-python.vscode-pylance"
-  ]
+  ],
+  "optionalDependencies": {
+    "@vscode/windows-ca-certs": "^0.3.4"
+  }
 }
