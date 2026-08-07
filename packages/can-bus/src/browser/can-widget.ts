@@ -15,17 +15,35 @@
 // *****************************************************************************
 
 import '../../src/browser/style/can-widget.css';
-import { injectable, postConstruct } from '@theia/core/shared/inversify';
-import { BaseWidget, Message } from '@theia/core/lib/browser';
-import { CanFrame, CanStatistics, CanBusWidget } from '../common/can-protocol';
+import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
+import { BaseWidget, Message, Widget } from '@theia/core/lib/browser';
+import { CanFrame, CanStatistics, CanBusWidget, CanBinaryDecoder } from '../common/can-protocol';
+import { RingBuffer } from './ring-buffer';
+import { FpsCanvasRenderer } from './fps-canvas';
+import { CanInterfaceReservation } from './can-interface-reservation';
+import { CanRpcClient } from './can-rpc-client';
+
+const MAX_FRAMES = 1000;
+const TABLE_ROWS = 50;
 
 @injectable()
 export class CanWidget extends BaseWidget {
 
-    static override readonly ID = CanBusWidget.ID;
-    static override readonly LABEL = CanBusWidget.LABEL;
+    static readonly ID = CanBusWidget.ID;
+    static readonly LABEL = CanBusWidget.LABEL;
 
-    protected frames: CanFrame[] = [];
+    @inject(CanRpcClient)
+    protected readonly canRpcClient!: CanRpcClient;
+
+    @inject(CanInterfaceReservation)
+    protected readonly interfaceReservation!: CanInterfaceReservation;
+
+    protected initRpc(): void {
+        // All widgets share a single RPC connection (one channel per path per WebSocket connection).
+        this.toDispose.push(this.canRpcClient.onBinaryFrames(chunk => this.addBinaryChunk(chunk)));
+    }
+
+    protected frames = new RingBuffer<CanFrame>(MAX_FRAMES);
     protected statistics: CanStatistics = {
         totalFrames: 0,
         framesPerSecond: 0,
@@ -41,9 +59,27 @@ export class CanWidget extends BaseWidget {
     protected chartContainer!: HTMLDivElement;
     protected frameTableEl!: HTMLTableElement;
     protected canvasEl!: HTMLCanvasElement;
+    protected fpsRenderer!: FpsCanvasRenderer;
+
+    // DOM elements for stats (no innerHTML on hot updates)
+    protected statusValEl!: HTMLSpanElement;
+    protected totalFramesValEl!: HTMLSpanElement;
+    protected fpsValEl!: HTMLSpanElement;
+    protected errorsValEl!: HTMLSpanElement;
+    protected busLoadValEl!: HTMLSpanElement;
+    protected interfaceSelectEl!: HTMLSelectElement;
+    public selectedInterface: string | undefined;
+
+    // Recycled DOM row pool (object pooling — no allocations per frame)
+    protected rowPool: HTMLTableRowElement[] = [];
+    protected tbodyEl!: HTMLTableSectionElement;
+    protected rafId: number | undefined;
+    protected dirty = false;
+    protected lastRenderTime = 0;
 
     @postConstruct()
     protected init(): void {
+        this.initRpc();
         this.id = CanBusWidget.ID;
         this.title.label = CanBusWidget.LABEL;
         this.title.closable = true;
@@ -51,6 +87,8 @@ export class CanWidget extends BaseWidget {
         this.addClass('can-bus-widget');
         this.scrollOptions = undefined;
         this.buildUI();
+        this.toDispose.push(this.interfaceReservation.onDidChange(() => this.updateInterfaceChoices()));
+        this.onDidDispose(() => this.interfaceReservation.release(this.id));
     }
 
     protected buildUI(): void {
@@ -61,50 +99,92 @@ export class CanWidget extends BaseWidget {
         const startBtn = this.createButton('▶ Start', () => this.startCapture());
         const stopBtn = this.createButton('⏹ Stop', () => this.stopCapture());
         const clearBtn = this.createButton('🗑 Clear', () => this.clearData());
-        const interfaceLabel = document.createElement('span');
+
+        const interfaceLabel = document.createElement('label');
         interfaceLabel.className = 'can-interface-label';
-        interfaceLabel.textContent = 'Interface: any';
+        interfaceLabel.textContent = 'Interface: ';
+        this.interfaceSelectEl = document.createElement('select');
+        this.interfaceSelectEl.className = 'theia-select';
+        this.interfaceSelectEl.onchange = () => this.selectInterface(this.interfaceSelectEl.value || undefined);
+        interfaceLabel.appendChild(this.interfaceSelectEl);
+        this.updateInterfaceChoices();
 
         this.toolbarEl.appendChild(startBtn);
         this.toolbarEl.appendChild(stopBtn);
         this.toolbarEl.appendChild(clearBtn);
         this.toolbarEl.appendChild(interfaceLabel);
 
-        // Stats bar
+        // Stats bar with pre-allocated spans (no innerHTML calls on hot path)
         this.statsEl = document.createElement('div');
         this.statsEl.className = 'can-stats';
+
+        this.statusValEl = document.createElement('span');
+        this.totalFramesValEl = document.createElement('span');
+        this.fpsValEl = document.createElement('span');
+        this.errorsValEl = document.createElement('span');
+        this.busLoadValEl = document.createElement('span');
+
+        this.statsEl.appendChild(this.createStatWrapper('Status:', this.statusValEl));
+        this.statsEl.appendChild(this.createStatWrapper('Frames:', this.totalFramesValEl));
+        this.statsEl.appendChild(this.createStatWrapper('FPS:', this.fpsValEl));
+        this.statsEl.appendChild(this.createStatWrapper('Errors:', this.errorsValEl));
+        this.statsEl.appendChild(this.createStatWrapper('Bus Load:', this.busLoadValEl));
+
         this.updateStatsDisplay();
 
-        // Chart area (canvas placeholder)
+        // Chart area
         this.chartContainer = document.createElement('div');
         this.chartContainer.className = 'can-chart-container';
         this.canvasEl = document.createElement('canvas');
         this.canvasEl.className = 'can-chart-canvas';
-        this.canvasEl.width = 800;
-        this.canvasEl.height = 200;
         this.chartContainer.appendChild(this.canvasEl);
+        this.fpsRenderer = new FpsCanvasRenderer(this.canvasEl);
 
-        // Frame table
+        // Frame table with recyclable row pool constructed via DOM API
         this.frameTableEl = document.createElement('table');
         this.frameTableEl.className = 'can-frame-table';
-        this.frameTableEl.innerHTML = `
-            <thead>
-                <tr>
-                    <th>Timestamp</th>
-                    <th>ID (hex)</th>
-                    <th>Type</th>
-                    <th>DLC</th>
-                    <th>Data</th>
-                    <th>Interface</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        `;
+
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        const headers = ['Timestamp', 'ID (hex)', 'Type', 'DLC', 'Data', 'Interface'];
+        headers.forEach(hText => {
+            const th = document.createElement('th');
+            th.textContent = hText;
+            headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        this.frameTableEl.appendChild(thead);
+
+        this.tbodyEl = document.createElement('tbody');
+        this.frameTableEl.appendChild(this.tbodyEl);
+
+        // Pre-allocate row pool
+        for (let i = 0; i < TABLE_ROWS; i++) {
+            const row = document.createElement('tr');
+            for (let c = 0; c < 6; c++) {
+                const td = document.createElement('td');
+                if (c === 1) { td.className = 'can-id'; }
+                if (c === 4) { td.className = 'can-data'; }
+                row.appendChild(td);
+            }
+            this.tbodyEl.appendChild(row);
+            this.rowPool.push(row);
+        }
 
         this.node.appendChild(this.toolbarEl);
         this.node.appendChild(this.statsEl);
         this.node.appendChild(this.chartContainer);
         this.node.appendChild(this.frameTableEl);
+    }
+
+    protected createStatWrapper(label: string, valueEl: HTMLSpanElement): HTMLSpanElement {
+        const span = document.createElement('span');
+        span.className = 'can-stat';
+        const strong = document.createElement('strong');
+        strong.textContent = label + ' ';
+        span.appendChild(strong);
+        span.appendChild(valueEl);
+        return span;
     }
 
     protected createButton(text: string, onClick: () => void): HTMLButtonElement {
@@ -115,23 +195,26 @@ export class CanWidget extends BaseWidget {
         return btn;
     }
 
-    startCapture(): void {
+    async startCapture(): Promise<void> {
+        if (!this.selectedInterface) {
+            return;
+        }
         this.isCapturing = true;
         this.statistics.startTime = Date.now();
         this.updateStatsDisplay();
-        // TODO: connect to backend CAN service
-        console.log('[CAN] Capture started');
+        await this.canRpcClient.startCapture({ name: this.selectedInterface, bitrate: 500000, frameRate: 1000 });
     }
 
-    stopCapture(): void {
+    async stopCapture(): Promise<void> {
         this.isCapturing = false;
         this.updateStatsDisplay();
-        // TODO: disconnect from backend CAN service
-        console.log('[CAN] Capture stopped');
+        if (this.selectedInterface) {
+            await this.canRpcClient.stopCapture(this.selectedInterface);
+        }
     }
 
     clearData(): void {
-        this.frames = [];
+        this.frames.clear();
         this.statistics = {
             totalFrames: 0,
             framesPerSecond: 0,
@@ -139,104 +222,136 @@ export class CanWidget extends BaseWidget {
             busLoad: 0,
             startTime: Date.now()
         };
+        this.fpsRenderer.clear();
         this.updateStatsDisplay();
-        this.updateFrameTable();
-        this.drawChart();
+        this.scheduleRender();
+    }
+
+    protected selectInterface(interfaceName: string | undefined): void {
+        if (interfaceName === this.selectedInterface) {
+            return;
+        }
+        if (interfaceName && !this.interfaceReservation.reserve(this.id, interfaceName)) {
+            this.updateInterfaceChoices();
+            return;
+        }
+        if (!interfaceName) {
+            this.interfaceReservation.release(this.id);
+        }
+        this.selectedInterface = interfaceName;
+        this.updateInterfaceChoices();
+    }
+
+    protected updateInterfaceChoices(): void {
+        if (!this.interfaceSelectEl) {
+            return;
+        }
+        const previous = this.selectedInterface || '';
+        this.interfaceSelectEl.replaceChildren();
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Choose interface…';
+        this.interfaceSelectEl.appendChild(placeholder);
+        for (const interfaceName of ['demo', 'demo2']) {
+            const option = document.createElement('option');
+            option.value = interfaceName;
+            option.textContent = interfaceName === 'demo' ? 'Demo' : 'Demo 2';
+            option.disabled = this.interfaceReservation.isReservedByOther(this.id, interfaceName);
+            this.interfaceSelectEl.appendChild(option);
+        }
+        this.interfaceSelectEl.value = previous;
     }
 
     addFrame(frame: CanFrame): void {
-        this.frames.push(frame);
-        if (this.frames.length > 1000) {
-            this.frames.shift(); // keep last 1000 frames
+        // The shared RPC stream carries all active interfaces; keep only this widget's selection.
+        if (frame.interface !== this.selectedInterface) {
+            return;
         }
+        this.frames.push(frame);
         this.statistics.totalFrames++;
         const elapsed = (Date.now() - this.statistics.startTime) / 1000;
         this.statistics.framesPerSecond = elapsed > 0
             ? Math.round(this.statistics.totalFrames / elapsed)
             : 0;
-        this.updateStatsDisplay();
-        this.updateFrameTable();
-        this.drawChart();
+        this.statistics.busLoad = Math.min(100, (this.statistics.framesPerSecond / 5000) * 100);
+        this.scheduleRender();
+    }
+
+    /** Receive binary chunk containing multiple packed frames and parse zero-allocation. */
+    addBinaryChunk(chunk: ArrayBuffer): void {
+        if (!this.isCapturing) {
+            return;
+        }
+        CanBinaryDecoder.decodeBatch(chunk, frame => this.addFrame(frame));
+    }
+
+    /** Throttle rendering to ~20 FPS (50ms interval) via requestAnimationFrame with a dirty flag. */
+    protected scheduleRender(): void {
+        if (this.dirty) { return; }
+        this.dirty = true;
+        this.rafId = requestAnimationFrame(timestamp => {
+            this.dirty = false;
+            this.rafId = undefined;
+
+            if (timestamp - this.lastRenderTime < 45) {
+                return;
+            }
+            this.lastRenderTime = timestamp;
+
+            this.updateStatsDisplay();
+            this.updateFrameTable();
+            this.drawChart();
+        });
+    }
+
+    protected override onAfterDetach(msg: Message): void {
+        if (this.rafId !== undefined) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = undefined;
+        }
+        super.onAfterDetach(msg);
     }
 
     protected updateStatsDisplay(): void {
         const s = this.statistics;
-        this.statsEl.innerHTML = `
-            <span class="can-stat">
-                <strong>Status:</strong>
-                <span class="${this.isCapturing ? 'status-active' : 'status-idle'}">
-                    ${this.isCapturing ? '● Capturing' : '○ Idle'}
-                </span>
-            </span>
-            <span class="can-stat"><strong>Frames:</strong> ${s.totalFrames}</span>
-            <span class="can-stat"><strong>FPS:</strong> ${s.framesPerSecond}</span>
-            <span class="can-stat"><strong>Errors:</strong> ${s.errors}</span>
-            <span class="can-stat"><strong>Bus Load:</strong> ${s.busLoad.toFixed(1)}%</span>
-        `;
+        this.statusValEl.textContent = this.isCapturing ? '● Capturing' : '○ Idle';
+        this.statusValEl.className = this.isCapturing ? 'status-active' : 'status-idle';
+
+        // totalFrames counts all frames ever received, not just those in the visible ring buffer
+        this.totalFramesValEl.textContent = String(s.totalFrames);
+        this.fpsValEl.textContent = String(s.framesPerSecond);
+        this.errorsValEl.textContent = String(s.errors);
+        this.busLoadValEl.textContent = `${s.busLoad.toFixed(1)}%`;
     }
 
     protected updateFrameTable(): void {
-        const tbody = this.frameTableEl.querySelector('tbody')!;
-        // Show last 50 frames
-        const recent = this.frames.slice(-50).reverse();
-        tbody.innerHTML = recent.map(f => `
-            <tr>
-                <td>${f.timestamp.toFixed(3)}</td>
-                <td class="can-id">0x${f.id.toString(16).toUpperCase().padStart(f.extended ? 8 : 3, '0')}</td>
-                <td>${f.extended ? 'EXT' : 'STD'}${f.rtr ? ' RTR' : ''}</td>
-                <td>${f.dlc}</td>
-                <td class="can-data">${f.data.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}</td>
-                <td>${f.interface}</td>
-            </tr>
-        `).join('');
+        const recent = this.frames.last(TABLE_ROWS).reverse();
+        for (let i = 0; i < TABLE_ROWS; i++) {
+            const row = this.rowPool[i];
+            const cells = row.children;
+            if (i < recent.length) {
+                const f = recent[i];
+                cells[0].textContent = f.timestamp.toFixed(3);
+                (cells[1] as HTMLElement).textContent = '0x' + f.id.toString(16).toUpperCase().padStart(f.extended ? 8 : 3, '0');
+                cells[2].textContent = (f.extended ? 'EXT' : 'STD') + (f.rtr ? ' RTR' : '');
+                cells[3].textContent = String(f.dlc);
+                (cells[4] as HTMLElement).textContent = f.data.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+                cells[5].textContent = f.interface;
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        }
     }
 
     protected drawChart(): void {
-        const canvas = this.canvasEl;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) { return; }
+        const computedStyle = getComputedStyle(this.node);
+        const fpsColor = computedStyle.getPropertyValue('--theia-symbolIcon-keywordForeground').trim() || '#4CAF50';
+        const busLoadColor = computedStyle.getPropertyValue('--theia-symbolIcon-stringForeground').trim() || '#2196F3';
+        const gridColor = computedStyle.getPropertyValue('--theia-border').trim() || 'rgba(128,128,128,0.2)';
 
-        const w = canvas.width;
-        const h = canvas.height;
-        ctx.clearRect(0, 0, w, h);
-
-        // Draw grid
-        ctx.strokeStyle = 'var(--theia-editorWidget-border, #333)';
-        ctx.lineWidth = 0.5;
-        for (let i = 0; i < 5; i++) {
-            const y = (h / 5) * i;
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(w, y);
-            ctx.stroke();
-        }
-
-        // Draw FPS line from recent frames
-        const recentFrames = this.frames.slice(-200);
-        if (recentFrames.length < 2) { return; }
-
-        const maxFps = Math.max(10, this.statistics.framesPerSecond * 1.5);
-        ctx.strokeStyle = '#4CAF50';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-
-        const stepX = w / recentFrames.length;
-        recentFrames.forEach((frame, i) => {
-            // Approximate instantaneous rate from timestamps
-            const x = i * stepX;
-            const y = h - (h * 0.1) - ((h * 0.8) / 2); // placeholder: flat line for now
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        });
-        ctx.stroke();
-
-        // Title
-        ctx.fillStyle = 'var(--theia-foreground, #ccc)';
-        ctx.font = '10px sans-serif';
-        ctx.fillText('CAN Bus Activity (placeholder)', 10, 15);
+        this.fpsRenderer.setColors({ fpsColor, busLoadColor, gridColor });
+        this.fpsRenderer.pushSample(this.statistics.framesPerSecond, this.statistics.busLoad);
     }
 
     protected override onAfterAttach(msg: Message): void {
@@ -246,7 +361,9 @@ export class CanWidget extends BaseWidget {
 
     protected override onResize(msg: Widget.ResizeMessage): void {
         super.onResize(msg);
-        this.canvasEl.width = this.chartContainer.clientWidth || 800;
-        this.drawChart();
+        const w = this.chartContainer.clientWidth || 800;
+        const h = this.chartContainer.clientHeight || 160;
+        this.fpsRenderer.resize(w, h);
     }
 }
+

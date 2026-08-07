@@ -8,6 +8,7 @@ import { exposeModulePlugin } from '@theia/bundle-plugin';
 import esbuild from 'esbuild';
 
 browserOptions.plugins.push(exposeModulePlugin());
+nodeOptions.external = [...(nodeOptions.external || []), '@vscode/windows-ca-certs', '@vscode/proxy-agent', 'drivelist'];
 
 const browserContext = await esbuild.context(browserOptions);
 const nodeContext = await esbuild.context(nodeOptions);

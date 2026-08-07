@@ -146,11 +146,11 @@ on the machine running Theia. Use the environment variable `OPENAI_API_KEY` to s
                     developerMessageSettings: {
                         type: 'string',
                         enum: ['user', 'system', 'developer', 'mergeWithFollowingUserMessage', 'skip'],
-                        default: 'developer',
+                        default: 'system',
                         title: nls.localize('theia/ai/openai/customEndpoints/developerMessageSettings/title',
                             'Controls the handling of system messages: `user`, `system`, and `developer` will be used as a role, `mergeWithFollowingUserMessage` will prefix\
                          the following user message with the system message or convert the system message to user message if the next message is not a user message.\
-                         `skip` will just remove the system message), defaulting to `developer`.')
+                         `skip` will just remove the system message), defaulting to `system` for custom OpenAI-compatible endpoints.')
                     },
                     supportsStructuredOutput: {
                         type: 'boolean',

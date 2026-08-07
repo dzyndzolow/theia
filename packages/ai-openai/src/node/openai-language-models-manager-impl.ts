@@ -165,7 +165,7 @@ export class OpenAiLanguageModelsManagerImpl implements OpenAiLanguageModelsMana
         return {
             maxInputTokens: description.url ? undefined : defaults.contextWindow,
             reasoningSupport: description.reasoningSupport ?? defaults.reasoningSupport,
-            developerMessageSettings: description.developerMessageSettings ?? defaults.developerMessageSettings ?? 'developer',
+            developerMessageSettings: description.developerMessageSettings ?? defaults.developerMessageSettings ?? (description.url ? 'system' : 'developer'),
             enableStreaming: description.enableStreaming ?? defaults.supportsStreaming ?? true,
             supportsStructuredOutput: description.supportsStructuredOutput ?? defaults.supportsStructuredOutput ?? true,
             // Server-side compaction is only available via the Response API.

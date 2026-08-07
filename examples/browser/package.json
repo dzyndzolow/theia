@@ -7,6 +7,7 @@
     "frontend": {
       "config": {
         "applicationName": "Theia Browser Example",
+        "defaultTheme": "dark",
         "preferences": {
           "files.enableTrash": false,
           "security.workspace.trust.enabled": false
@@ -50,6 +51,8 @@
     "@theia/api-provider-sample": "1.73.0",
     "@theia/api-samples": "1.73.0",
     "@theia/bulk-edit": "1.73.0",
+    "@theia/can-bus": "1.73.0",
+    "@theia/signal-ui": "1.73.0",
     "@theia/callhierarchy": "1.73.0",
     "@theia/collaboration": "1.73.0",
     "@theia/console": "1.73.0",

@@ -1,0 +1,19 @@
+{
+  "extends": "../../configs/base.tsconfig",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "lib",
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../signal-core"
+    }
+  ]
+}

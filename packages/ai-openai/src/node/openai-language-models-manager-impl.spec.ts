@@ -23,6 +23,10 @@ class TestableOpenAiLanguageModelsManagerImpl extends OpenAiLanguageModelsManage
     resolveServerToolsForTest(description: OpenAiModelDescription): typeof OPENAI_SERVER_TOOLS | undefined {
         return this.resolveServerTools(description);
     }
+
+    resolveMetadataForTest(description: OpenAiModelDescription): { developerMessageSettings: 'user' | 'system' | 'developer' | 'mergeWithFollowingUserMessage' | 'skip' } {
+        return this.resolveMetadata(description) as { developerMessageSettings: 'user' | 'system' | 'developer' | 'mergeWithFollowingUserMessage' | 'skip' };
+    }
 }
 
 function modelDescription(overrides: Partial<OpenAiModelDescription> = {}): OpenAiModelDescription {
@@ -38,6 +42,15 @@ function modelDescription(overrides: Partial<OpenAiModelDescription> = {}): Open
 
 describe('OpenAiLanguageModelsManagerImpl server tools', () => {
     const manager = new TestableOpenAiLanguageModelsManagerImpl();
+
+    it('uses a system default for custom OpenAI-compatible endpoints', () => {
+        const metadata = manager.resolveMetadataForTest(modelDescription({
+            url: 'https://example.com/v1',
+            model: 'deepseek-chat'
+        }));
+
+        expect(metadata.developerMessageSettings).to.equal('system');
+    });
 
     it('offers native web search for Response API models using the OpenAI endpoint', () => {
         const serverTools = manager.resolveServerToolsForTest(modelDescription({ useResponseApi: true }));

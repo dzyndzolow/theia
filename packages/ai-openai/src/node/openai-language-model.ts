@@ -48,16 +48,23 @@ export class MistralFixedOpenAI extends OpenAI {
         const messages = (options.body as { messages: Array<ChatCompletionMessageParam> }).messages;
         if (Array.isArray(messages)) {
             (options.body as { messages: Array<ChatCompletionMessageParam> }).messages.forEach(m => {
-                if (m.role === 'assistant' && m.tool_calls) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const mutableMessage = m as any;
+                if (mutableMessage.role === 'developer') {
+                    // Mistral's OpenAI-compatible endpoint rejects the `developer` role in chat messages.
+                    // Normalize it to `system`, which is the compatible form used by the provider contract.
+                    mutableMessage.role = 'system';
+                }
+                if (mutableMessage.role === 'assistant' && mutableMessage.tool_calls) {
                     // Mistral OpenAI Endpoint expects refusal to be undefined and not null for optional properties
                     // eslint-disable-next-line no-null/no-null
-                    if (m.refusal === null) {
-                        m.refusal = undefined;
+                    if (mutableMessage.refusal === null) {
+                        mutableMessage.refusal = undefined;
                     }
                     // Mistral OpenAI Endpoint expects parsed to be undefined and not null for optional properties
                     // eslint-disable-next-line no-null/no-null
-                    if ((m as unknown as { parsed: null | undefined }).parsed === null) {
-                        (m as unknown as { parsed: null | undefined }).parsed = undefined;
+                    if ((mutableMessage as unknown as { parsed: null | undefined }).parsed === null) {
+                        (mutableMessage as unknown as { parsed: null | undefined }).parsed = undefined;
                     }
                 }
             });

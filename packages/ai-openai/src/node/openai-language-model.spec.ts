@@ -17,7 +17,7 @@
 import { expect } from 'chai';
 import { LanguageModelMessage, LanguageModelRequest, LanguageModelResponse, ReasoningSupport, UserRequest } from '@theia/ai-core';
 import { OpenAI } from 'openai';
-import { OpenAiModel, OpenAiModelUtils } from './openai-language-model';
+import { MistralFixedOpenAI, OpenAiModel, OpenAiModelUtils } from './openai-language-model';
 import { OpenAiResponseApiUtils } from './openai-response-api-utils';
 import { OPENAI_WEB_SEARCH } from './openai-server-tools';
 
@@ -199,6 +199,23 @@ describe('OpenAiModelUtils Chat Completions processMessages', () => {
         const texts = result?.map(m => typeof m.content === 'string' ? m.content : '').join(' ');
         expect(texts).to.contain('hello');
         expect(texts).to.contain('world');
+    });
+
+    it('normalizes a developer role to system for Mistral-compatible endpoints', async () => {
+        const client = new MistralFixedOpenAI({ apiKey: 'test-key', baseURL: 'https://example.com/v1', fetch: async () => new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }) });
+        const options: { body: { messages: Array<{ role: string; content: string }> } } = {
+            body: {
+                messages: [
+                    { role: 'developer', content: 'You are helpful' },
+                    { role: 'user', content: 'Hello' }
+                ]
+            }
+        };
+
+        await (client as unknown as { prepareOptions(options: { body: { messages: Array<{ role: string; content: string }> } }): Promise<void> }).prepareOptions(options as never);
+
+        expect(options.body.messages[0].role).to.equal('system');
+        expect(options.body.messages[1].role).to.equal('user');
     });
 });
 

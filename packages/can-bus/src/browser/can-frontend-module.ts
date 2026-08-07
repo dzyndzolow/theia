@@ -19,13 +19,49 @@ import { WidgetFactory, bindViewContribution, OpenHandler } from '@theia/core/li
 import { CanViewContribution } from './can-view-contribution';
 import { CanWidget } from './can-widget';
 import { CanBusWidget } from '../common/can-protocol';
+import { CanMatrixWidget, CAN_MATRIX_WIDGET_ID } from './can-matrix-widget';
+import { CanMatrixViewContribution } from './can-matrix-view-contribution';
+import { WidgetInstanceNumbers } from './widget-instance-numbers';
+import { CanInterfaceReservation } from './can-interface-reservation';
+import { CanRpcClient } from './can-rpc-client';
+
+const canWidgetNumbers = new WidgetInstanceNumbers();
+const canMatrixNumbers = new WidgetInstanceNumbers();
 
 export default new ContainerModule(bind => {
-    bind(CanWidget).toSelf();
+    bind(CanRpcClient).toSelf().inSingletonScope();
+    bind(CanInterfaceReservation).toSelf().inSingletonScope();
+    bind(CanWidget).toSelf().inTransientScope();
     bind(WidgetFactory).toDynamicValue(context => ({
         id: CanBusWidget.ID,
-        createWidget: () => context.container.get<CanWidget>(CanWidget)
+        createWidget: (options?: { id?: string }) => {
+            const widget = context.container.get<CanWidget>(CanWidget);
+            if (options && options.id) {
+                widget.id = options.id;
+            }
+            const instanceNumber = canWidgetNumbers.allocate();
+            widget.title.label = `${CanBusWidget.LABEL} #${instanceNumber}`;
+            widget.onDidDispose(() => canWidgetNumbers.release(instanceNumber));
+            return widget;
+        }
     }));
     bindViewContribution(bind, CanViewContribution);
     bind(OpenHandler).to(CanViewContribution).inSingletonScope();
+
+    bind(CanMatrixWidget).toSelf().inTransientScope();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: CAN_MATRIX_WIDGET_ID,
+        createWidget: (options?: { id?: string }) => {
+            const widget = context.container.get<CanMatrixWidget>(CanMatrixWidget);
+            if (options && options.id) {
+                widget.id = options.id;
+            }
+            const instanceNumber = canMatrixNumbers.allocate();
+            widget.title.label = `CAN ID Matrix #${instanceNumber}`;
+            widget.onDidDispose(() => canMatrixNumbers.release(instanceNumber));
+            return widget;
+        }
+    }));
+    bindViewContribution(bind, CanMatrixViewContribution);
+    bind(OpenHandler).to(CanMatrixViewContribution).inSingletonScope();
 });

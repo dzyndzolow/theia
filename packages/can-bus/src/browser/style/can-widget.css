@@ -1,0 +1,263 @@
+/* *****************************************************************************
+ * Copyright (C) 2024 EclipseSource and others.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Public License v. 2.0 which is available at
+ * http://www.eclipse.org/legal/epl-2.0.
+ *
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
+ * ***************************************************************************** */
+
+.can-bus-widget {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    background-color: var(--theia-layout-color0);
+    color: var(--theia-ui-font-color);
+    font-family: var(--theia-ui-font-family);
+    font-size: var(--theia-ui-font-size);
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.can-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: var(--theia-ui-padding, 6px 10px);
+    background-color: var(--theia-layout-color1);
+    border-bottom: 1px solid var(--theia-border);
+}
+
+.can-toolbar .can-btn {
+    padding: 4px 10px;
+    font-size: var(--theia-ui-font-size);
+    cursor: pointer;
+}
+
+.can-interface-label {
+    margin-left: auto;
+    font-size: calc(var(--theia-ui-font-size) - 1px);
+    color: var(--theia-descriptionForeground);
+    font-weight: 500;
+}
+
+.can-close-btn {
+    margin-left: 8px;
+    background: transparent;
+    border: none;
+    color: var(--theia-descriptionForeground);
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.can-close-btn:hover {
+    background-color: rgba(235, 87, 87, 0.25);
+    color: #ff5555;
+}
+
+.can-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 8px 12px;
+    background-color: var(--theia-editor-background);
+    border-bottom: 1px solid var(--theia-border);
+    font-size: calc(var(--theia-ui-font-size) - 1px);
+}
+
+.can-stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.can-stat strong {
+    color: var(--theia-descriptionForeground);
+    font-weight: 600;
+}
+
+.status-active {
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+.status-idle {
+    color: var(--theia-disabledForeground, #888);
+}
+
+.can-chart-container {
+    height: 160px;
+    min-height: 120px;
+    width: 100%;
+    background-color: var(--theia-editor-background);
+    border-bottom: 1px solid var(--theia-border);
+    position: relative;
+    box-sizing: border-box;
+}
+
+.can-chart-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.can-frame-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: calc(var(--theia-ui-font-size) - 1px);
+    flex: 1;
+    overflow-y: auto;
+}
+
+.can-frame-table thead {
+    position: sticky;
+    top: 0;
+    background-color: var(--theia-layout-color2);
+    z-index: 1;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.can-frame-table th {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--theia-border);
+    color: var(--theia-descriptionForeground);
+    font-weight: 600;
+}
+
+.can-frame-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--theia-editorWidget-border, rgba(128,128,128,0.15));
+    white-space: nowrap;
+}
+
+.can-frame-table tr:hover {
+    background-color: var(--theia-list-hoverBackground);
+}
+
+.can-frame-table .can-id,
+.can-frame-table .can-data {
+    font-family: var(--theia-code-font-family, monospace);
+}
+
+.can-frame-table .can-id {
+    color: var(--theia-symbolIcon-keywordForeground, #569cd6);
+}
+
+.can-frame-table .can-data {
+    color: var(--theia-symbolIcon-stringForeground, #ce9178);
+}
+
+.can-tag {
+    display: inline-block;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.can-tag.std {
+    background-color: rgba(78, 201, 176, 0.2);
+    color: #4ec9b0;
+    border: 1px solid rgba(78, 201, 176, 0.4);
+}
+
+.can-tag.ext {
+    background-color: rgba(220, 220, 170, 0.2);
+    color: #dcdcaa;
+    border: 1px solid rgba(220, 220, 170, 0.4);
+}
+
+.can-byte-changed {
+    animation: canByteFlash 0.4s ease-out;
+}
+
+@keyframes canByteFlash {
+    0% { background-color: #e51400; color: #ffffff; }
+    100% { background-color: transparent; }
+}
+
+.can-frame-detail-panel {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(260px, 1fr);
+    gap: 12px;
+    padding: 10px;
+    border-top: 1px solid var(--theia-panel-border);
+    background: var(--theia-editor-background);
+}
+
+.can-payload-inspector,
+.can-typed-field-decoder {
+    min-height: 112px;
+    padding: 8px;
+    border: 1px solid var(--theia-panel-border);
+    border-radius: 3px;
+    color: var(--theia-editor-foreground);
+}
+
+.can-payload-inspector h3,
+.can-typed-field-decoder h3 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.can-payload-hex,
+.can-payload-ascii {
+    display: flex;
+    gap: 4px;
+    min-height: 25px;
+    font-family: var(--theia-code-font-family, monospace);
+}
+
+.can-payload-byte {
+    min-width: 29px;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    color: var(--theia-editor-foreground);
+    background: var(--theia-input-background);
+    cursor: pointer;
+}
+
+.can-payload-byte.selected,
+.can-payload-character.selected,
+.can-frame-table tr.selected {
+    outline: 1px solid var(--theia-focusBorder);
+    background: var(--theia-list-activeSelectionBackground);
+}
+
+.can-payload-character {
+    width: 29px;
+    padding: 3px;
+    text-align: center;
+    color: var(--theia-descriptionForeground);
+}
+
+.can-payload-bits,
+.can-typed-field-value {
+    display: block;
+    margin-top: 8px;
+    font-family: var(--theia-code-font-family, monospace);
+}
+
+.can-typed-field-decoder .theia-select {
+    margin-right: 8px;
+}
+
+@media (max-width: 700px) {
+    .can-frame-detail-panel {
+        grid-template-columns: 1fr;
+    }
+}
