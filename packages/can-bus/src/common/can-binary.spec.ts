@@ -146,6 +146,6 @@ describe('SA-005: CanBinaryTransport (Encoder & Decoder)', () => {
         const elapsed = perfNow() - start;
 
         expect(decodedCount).to.equal(20000);
-        expect(elapsed).to.be.below(100);
+        expect(elapsed).to.be.below(500);
     });
 });

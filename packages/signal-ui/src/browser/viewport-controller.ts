@@ -56,7 +56,6 @@ export class ViewportController implements Disposable {
     readonly onResize: Event<ViewportResizeEvent> = this.onResizeEmitter.event;
 
     private readonly toDispose = new DisposableCollection();
-    private resizeObserver: ResizeObserver | undefined;
     private resizeDebounceTimer: ReturnType<typeof setTimeout> | undefined;
     private lastResizeWidth = 0;
     private lastResizeHeight = 0;

@@ -45,9 +45,12 @@ export interface ICanSocketService {
 /**
  * Deterministic CAN bus simulator driven by hrtime-compensated timers.
  *
- * Generates predictable 11-bit and 29-bit frames at a configurable rate
- * (100-5 000 fps). The sequence uses a linear congruential generator so
- * tests can verify exact frame values.
+ * Generates exactly 20 standard 11-bit CAN IDs at configurable rates:
+ *   Group A (0x100-0x104): 5 frames with constant payloads
+ *   Group B (0x110-0x116): 7 frames with partially changing bytes
+ *   Group C (0x120-0x125): 6 frames with continuously changing patterns
+ *   0x130: UINT16 Little Endian incrementing signal
+ *   0x131: INT16 Little Endian 0.2 Hz sinusoidal signal
  */
 @injectable()
 export class CanSimulatorAdapter implements CanHardwareAdapter {
@@ -55,18 +58,45 @@ export class CanSimulatorAdapter implements CanHardwareAdapter {
     protected timer: ReturnType<typeof setTimeout> | undefined;
     protected startHr: bigint = 0n;
     protected frameCount = 0;
-    protected configuredRate = 1000; // frames per second
+    protected configuredRate = 1000; // frames per second (base rate)
     protected configuredInterface = 'demo';
     protected running = false;
 
-    // Deterministic ID sequence state
-    protected idState = 0x100;
+    // Exactly 20 CAN IDs with their individual frequencies (Hz)
+    protected readonly ID_DEFS = [
+        { id: 0x100, hz: 5, group: 'A' },
+        { id: 0x101, hz: 5, group: 'A' },
+        { id: 0x102, hz: 5, group: 'A' },
+        { id: 0x103, hz: 5, group: 'A' },
+        { id: 0x104, hz: 5, group: 'A' },
+        { id: 0x110, hz: 8, group: 'B' },
+        { id: 0x111, hz: 8, group: 'B' },
+        { id: 0x112, hz: 10, group: 'B' },
+        { id: 0x113, hz: 8, group: 'B' },
+        { id: 0x114, hz: 10, group: 'B' },
+        { id: 0x115, hz: 8, group: 'B' },
+        { id: 0x116, hz: 10, group: 'B' },
+        { id: 0x120, hz: 15, group: 'C' },
+        { id: 0x121, hz: 15, group: 'C' },
+        { id: 0x122, hz: 15, group: 'C' },
+        { id: 0x123, hz: 15, group: 'C' },
+        { id: 0x124, hz: 15, group: 'C' },
+        { id: 0x125, hz: 15, group: 'C' },
+        { id: 0x130, hz: 10, group: 'UINT16' },
+        { id: 0x131, hz: 10, group: 'INT16' },
+    ] as const;
+
+    // Per-ID frame counters
+    protected idCounters = new Array(20).fill(0);
+    // Per-ID last-send timestamp in ns (for rate control)
+    protected idLastSent = new Array<bigint>(20).fill(0n);
 
     configure(config: CanInterfaceConfig): void {
         const rate = config.frameRate !== undefined ? config.frameRate : (config.bitrate <= 5000 ? config.bitrate : 1000);
         this.configuredRate = Math.max(10, Math.min(rate, 5000));
         this.configuredInterface = config.name;
-        this.idState = config.name === 'demo2' ? 0x500 : 0x100;
+        this.idCounters.fill(0);
+        this.idLastSent.fill(0n);
     }
 
     start(callback: (frame: CanFrame) => void): void {
@@ -75,6 +105,7 @@ export class CanSimulatorAdapter implements CanHardwareAdapter {
         this.running = true;
         this.startHr = process.hrtime.bigint();
         this.frameCount = 0;
+        this.idLastSent.fill(0n);
         this.scheduleNext();
     }
 
@@ -87,12 +118,13 @@ export class CanSimulatorAdapter implements CanHardwareAdapter {
         this.callback = undefined;
     }
 
-    /** Schedule the next frame delivery, compensating for timer drift via hrtime. */
+    /** Schedule the next frame delivery. Each iteration checks which IDs are due. */
     protected scheduleNext(): void {
         if (!this.running) { return; }
 
-        const intervalNs = BigInt(Math.round(1e9 / this.configuredRate));
-        const nextTarget = this.startHr + intervalNs * BigInt(this.frameCount + 1);
+        // Use a fixed tick rate based on configuredRate (base tick = 10ms at 100fps)
+        const tickIntervalNs = BigInt(Math.round(1e9 / Math.max(this.configuredRate, 100)));
+        const nextTarget = this.startHr + tickIntervalNs * BigInt(this.frameCount + 1);
         const now = process.hrtime.bigint();
         const delayMs = Math.max(0, Number((nextTarget - now) / 1_000_000n));
 
@@ -100,33 +132,128 @@ export class CanSimulatorAdapter implements CanHardwareAdapter {
             if (!this.running || !this.callback) { return; }
 
             this.frameCount++;
-            const actualNs = process.hrtime.bigint() - this.startHr;
-            const frame = this.generateFrame(this.frameCount, actualNs);
-            this.callback(frame);
+            const elapsedNs = process.hrtime.bigint() - this.startHr;
+            const elapsedSeconds = Number(elapsedNs) / 1e9;
+
+            // Check each ID whether it is due based on its frequency
+            for (let slot = 0; slot < 20; slot++) {
+                const def = this.ID_DEFS[slot];
+                const intervalNs = BigInt(Math.round(1e9 / def.hz));
+                const lastSent = this.idLastSent[slot];
+
+                if (lastSent === 0n || (elapsedNs - lastSent) >= intervalNs) {
+                    const frame = this.generateFrameForSlot(slot, this.idCounters[slot], elapsedNs, elapsedSeconds);
+                    this.callback(frame);
+                    this.idCounters[slot]++;
+                    this.idLastSent[slot] = elapsedNs;
+                }
+            }
 
             this.scheduleNext();
         }, delayMs);
     }
 
-    /** Deterministic frame generator using a simple linear congruential sequence. */
-    protected generateFrame(seq: number, elapsedNs: bigint): CanFrame {
-        const useExtended = seq % 5 === 0; // every 5th frame is 29-bit
-        const id = (this.idState + seq * 7) & (useExtended ? 0x1FFFFFFF : 0x7FF);
-        const dlc = (seq % 8) + 1; // 1..8 bytes
-        const data: number[] = [];
-        for (let i = 0; i < dlc; i++) {
-            data.push((seq + i * 13) & 0xFF);
-        }
+    protected generateFrameForSlot(slot: number, counter: number, elapsedNs: bigint, elapsedSeconds: number): CanFrame {
+        const def = this.ID_DEFS[slot];
+        const dlc = 8;
+        const data = this.createPayload(slot, def, counter, elapsedSeconds);
 
         return {
-            id,
-            extended: useExtended,
+            id: def.id,
+            extended: false,
             rtr: false,
             data,
             dlc,
-            timestamp: Number(elapsedNs) / 1e6, // ns -> ms
+            timestamp: Number(elapsedNs) / 1e6,
             interface: this.configuredInterface
         };
+    }
+
+    /**
+     * Group A (0x100-0x104): constant payloads
+     * Group B (0x110-0x116): selected bytes change with counters
+     * Group C (0x120-0x125): continuously changing deterministic patterns
+     * 0x130: UINT16 LE incrementing by 10
+     * 0x131: INT16 LE 0.2 Hz sinusoid
+     */
+    protected createPayload(slot: number, def: typeof this.ID_DEFS[number], counter: number, elapsedSeconds: number): number[] {
+        const data = new Array<number>(8).fill(0);
+
+        if (def.group === 'A') {
+            // Constant payloads: 0x100 -> [10,20,...,80], 0x101 -> [11,21,...,81], etc.
+            const base = def.id - 0x100;
+            for (let i = 0; i < 8; i++) {
+                data[i] = (10 + i * 10 + base) & 0xFF;
+            }
+        } else if (def.group === 'B') {
+            // Most bytes constant, selected bytes change
+            const idOffset = def.id - 0x110;
+            const constBase = 0x40 + idOffset * 5;
+            for (let i = 0; i < 8; i++) {
+                data[i] = (constBase + i * 3) & 0xFF;
+            }
+            // Per-ID variable bytes
+            switch (def.id) {
+                case 0x110: data[0] = counter & 0xFF; break;
+                case 0x111: data[1] = counter & 0xFF; break;
+                case 0x112: data[2] = counter & 0xFF; data[3] = (counter * 7) & 0xFF; break;
+                case 0x113: data[4] = counter & 0xFF; break;
+                case 0x114: data[5] = counter & 0xFF; data[6] = (counter * 11) & 0xFF; break;
+                case 0x115: data[7] = counter & 0xFF; break;
+                case 0x116: data[0] = counter & 0xFF; data[3] = (counter * 3) & 0xFF; data[7] = (counter * 7) & 0xFF; break;
+            }
+        } else if (def.group === 'C') {
+            // Continuously changing deterministic patterns
+            const idx = def.id - 0x120;
+            switch (idx) {
+                case 0: // Counter increasing
+                    for (let i = 0; i < 8; i++) { data[i] = (counter + i) & 0xFF; }
+                    break;
+                case 1: // Counter decreasing
+                    for (let i = 0; i < 8; i++) { data[i] = (0xFF - ((counter + i) & 0xFF)); }
+                    break;
+                case 2: // Rotating bit
+                    for (let i = 0; i < 8; i++) { data[i] = (1 << ((counter + i) % 8)); }
+                    break;
+                case 3: // Multiple counters with different divisors
+                    data[0] = counter & 0xFF;
+                    data[1] = (Math.floor(counter / 2)) & 0xFF;
+                    data[2] = (Math.floor(counter / 3)) & 0xFF;
+                    data[3] = (Math.floor(counter / 5)) & 0xFF;
+                    data[4] = (Math.floor(counter / 7)) & 0xFF;
+                    data[5] = (Math.floor(counter / 11)) & 0xFF;
+                    data[6] = (Math.floor(counter / 13)) & 0xFF;
+                    data[7] = (Math.floor(counter / 17)) & 0xFF;
+                    break;
+                case 4: // Repeating sequence of length 16
+                    for (let i = 0; i < 8; i++) { data[i] = ((counter + i) % 16) * 16; }
+                    break;
+                case 5: // Value derived from frame number
+                    for (let i = 0; i < 8; i++) { data[i] = ((counter * (i + 1) * 13) % 256); }
+                    break;
+            }
+        } else if (def.id === 0x130) {
+            // UINT16 Little Endian, incrementing by 10, wrap at 65536
+            // counter=0 -> 0, counter=1 -> 10, etc.
+            const uint16Val = (counter * 10) & 0xFFFF;
+            data[0] = uint16Val & 0xFF;         // LSB
+            data[1] = (uint16Val >> 8) & 0xFF;  // MSB
+            // Bytes 2-7 constant
+            for (let i = 2; i < 8; i++) { data[i] = 0x55; }
+        } else if (def.id === 0x131) {
+            // INT16 Little Endian, 0.2 Hz sinusoid, amplitude 10000
+            const int16Val = Math.round(10000 * Math.sin(2 * Math.PI * 0.2 * elapsedSeconds));
+            // Clamp to INT16 range
+            const clamped = Math.max(-32768, Math.min(32767, int16Val));
+            // Store as 16-bit two's complement
+            const unsigned = clamped < 0 ? (clamped + 65536) : clamped;
+            data[0] = unsigned & 0xFF;          // LSB
+            data[1] = (unsigned >> 8) & 0xFF;   // MSB
+            // Bytes 2-7 constant
+            for (let i = 2; i < 8; i++) { data[i] = 0xAA; }
+        }
+
+        return data;
     }
 }
 

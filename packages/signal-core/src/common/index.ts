@@ -18,4 +18,6 @@ export * from './decoder-dag';
 export * from './decoder-registry';
 export * from './annotation-validator';
 export * from './decoder-circuit-breaker';
+export * from './global-variable-contracts';
+export * from './global-variable-registry';
 export * from './decoders/uart-decoder-provider';

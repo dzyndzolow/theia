@@ -42,7 +42,7 @@ describe('ViewportController', () => {
         it('should clamp duration to minimum when range is too narrow', () => {
             controller.setTimeRange(BigInt(100), BigInt(150));
             const vp = controller.viewport;
-            expect(vp.endTimeNs - vp.startTimeNs).to.be.greaterThanOrEqual(BigInt(100));
+            expect(vp.endTimeNs - vp.startTimeNs >= BigInt(100)).to.be.true;
         });
 
         it('should fire onViewportChanged event', () => {
@@ -292,7 +292,6 @@ describe('ViewportController', () => {
         it('should clean up emitters', () => {
             controller.dispose();
             // After dispose, setting values should not throw but events won't fire
-            let count = 0;
             // The emitter is already disposed, so subscribing after dispose
             // may throw or be a no-op depending on Theia's Emitter implementation.
             // We just verify dispose doesn't throw.

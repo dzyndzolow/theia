@@ -21,14 +21,23 @@ import { CanWidget } from './can-widget';
 import { CanBusWidget } from '../common/can-protocol';
 import { CanMatrixWidget, CAN_MATRIX_WIDGET_ID } from './can-matrix-widget';
 import { CanMatrixViewContribution } from './can-matrix-view-contribution';
+import { ValueAnalyzerWidget, VALUE_ANALYZER_WIDGET_ID, ValueAnalyzerOptions } from './value-analyzer-widget';
+import { CanValueViewContribution } from './value-analyzer-view-contribution';
+import { GlobalVariablesWidget, GLOBAL_VARIABLES_WIDGET_ID } from './global-variables-widget';
+import { GlobalVariablesViewContribution } from './global-variables-view-contribution';
 import { WidgetInstanceNumbers } from './widget-instance-numbers';
 import { CanInterfaceReservation } from './can-interface-reservation';
 import { CanRpcClient } from './can-rpc-client';
+import { GlobalVariableRegistry } from '@theia/signal-core';
+import { CanVariableBridge } from './can-variable-bridge';
 
 const canWidgetNumbers = new WidgetInstanceNumbers();
 const canMatrixNumbers = new WidgetInstanceNumbers();
+const canValueNumbers = new WidgetInstanceNumbers();
 
 export default new ContainerModule(bind => {
+    bind(GlobalVariableRegistry).toSelf().inSingletonScope();
+    bind(CanVariableBridge).toSelf().inSingletonScope();
     bind(CanRpcClient).toSelf().inSingletonScope();
     bind(CanInterfaceReservation).toSelf().inSingletonScope();
     bind(CanWidget).toSelf().inTransientScope();
@@ -64,4 +73,33 @@ export default new ContainerModule(bind => {
     }));
     bindViewContribution(bind, CanMatrixViewContribution);
     bind(OpenHandler).to(CanMatrixViewContribution).inSingletonScope();
+
+    bind(ValueAnalyzerWidget).toSelf().inTransientScope();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: VALUE_ANALYZER_WIDGET_ID,
+        createWidget: (options?: ValueAnalyzerOptions) => {
+            const widget = context.container.get<ValueAnalyzerWidget>(ValueAnalyzerWidget);
+            if (options && options.id) {
+                widget.id = options.id;
+            }
+            const instanceNumber = canValueNumbers.allocate();
+            widget.title.label = `${ValueAnalyzerWidget.LABEL} #${instanceNumber}`;
+            widget.onDidDispose(() => canValueNumbers.release(instanceNumber));
+            if (options) {
+                widget.configure(options);
+            }
+            return widget;
+        }
+    }));
+    bindViewContribution(bind, CanValueViewContribution);
+    bind(OpenHandler).to(CanValueViewContribution).inSingletonScope();
+
+    bind(GlobalVariablesWidget).toSelf().inSingletonScope();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: GLOBAL_VARIABLES_WIDGET_ID,
+        createWidget: () => context.container.get<GlobalVariablesWidget>(GlobalVariablesWidget)
+    }));
+    bindViewContribution(bind, GlobalVariablesViewContribution);
+    bind(OpenHandler).to(GlobalVariablesViewContribution).inSingletonScope();
+
 });

@@ -95,6 +95,7 @@ Dozwolone stany wyjątkowe: `BLOCKED` i `POPRAWKI WYMAGANE`. Status rekordu nie 
 | SA-204 | Antigravity | ZAAKCEPTOWANE | `SA-204.md` |
 | SA-205 | Antigravity | ZAAKCEPTOWANE | `SA-205.md` |
 | SA-206 | Antigravity | ZAAKCEPTOWANE | `SA-206.md` |
+| GLOBAL-VARS | Antigravity | ZAAKCEPTOWANE | `GLOBAL-VARS.md` |
 
 ## Pliki współdzielone (aktywne)
 

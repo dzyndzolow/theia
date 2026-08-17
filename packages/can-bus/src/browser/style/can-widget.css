@@ -113,31 +113,39 @@
 
 .can-frame-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: calc(var(--theia-ui-font-size) - 1px);
-    flex: 1;
-    overflow-y: auto;
 }
 
 .can-frame-table thead {
     position: sticky;
     top: 0;
-    background-color: var(--theia-layout-color2);
-    z-index: 1;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    z-index: 10;
+    background-color: var(--theia-editorWidget-background, #252526);
+}
+
+.can-frame-table thead tr {
+    background-color: var(--theia-editorWidget-background, #252526);
 }
 
 .can-frame-table th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
     text-align: left;
     padding: 6px 8px;
-    border-bottom: 1px solid var(--theia-border);
-    color: var(--theia-descriptionForeground);
+    border-bottom: 1px solid var(--theia-border, #3c3c3c);
+    background-color: var(--theia-editorWidget-background, #252526);
+    background-clip: padding-box;
+    box-shadow: 0 1px 0 var(--theia-border, #3c3c3c), 0 2px 6px rgba(0, 0, 0, 0.45);
+    color: var(--theia-descriptionForeground, #cccccc);
     font-weight: 600;
 }
 
 .can-frame-table td {
-    padding: 4px 8px;
-    border-bottom: 1px solid var(--theia-editorWidget-border, rgba(128,128,128,0.15));
+    padding: 3px 5px;
+    border-bottom: 1px solid var(--theia-editorWidget-border, rgba(128, 128, 128, 0.15));
     white-space: nowrap;
 }
 
@@ -180,21 +188,132 @@
 }
 
 .can-byte-changed {
-    animation: canByteFlash 0.4s ease-out;
+    padding: 0 2px;
+    border-radius: 3px;
+    font-weight: 600;
+    transition: background-color 0.3s ease, outline-color 0.3s ease, opacity 0.3s ease;
 }
 
-@keyframes canByteFlash {
-    0% { background-color: #e51400; color: #ffffff; }
-    100% { background-color: transparent; }
+/* Intensity levels with per-level colors */
+.can-byte-intensity-low {
+    outline: 1px solid rgba(255, 200, 50, var(--byte-highlight-opacity, 1));
+    background: rgba(255, 200, 50, calc(var(--byte-highlight-opacity, 1) * 0.2));
+    color: inherit;
+}
+
+.can-byte-intensity-medium {
+    outline: 1px solid rgba(255, 150, 30, var(--byte-highlight-opacity, 1));
+    background: rgba(255, 150, 30, calc(var(--byte-highlight-opacity, 1) * 0.3));
+    color: inherit;
+}
+
+.can-byte-intensity-high {
+    outline: 1px solid rgba(255, 80, 30, var(--byte-highlight-opacity, 1));
+    background: rgba(255, 80, 30, calc(var(--byte-highlight-opacity, 1) * 0.4));
+    color: inherit;
+}
+
+.can-byte {
+    display: inline;
+}
+
+.can-decoded-byte-values {
+    font-family: var(--theia-code-font-family, monospace);
+    font-size: calc(var(--theia-ui-font-size) - 3px);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.can-decoded-byte-values span {
+    display: inline-block;
+    box-sizing: border-box;
+    margin-right: 1ch;
+    text-align: right;
+}
+
+.can-decoded-byte-values span:last-child {
+    margin-right: 0;
+}
+
+.can-decoded-uint8 span {
+    width: 3ch;
+}
+
+.can-decoded-int8 span {
+    width: 5ch;
+}
+
+.can-decoded-uint8 {
+    color: var(--theia-symbolIcon-numberForeground, #b5cea8);
+}
+
+.can-decoded-int8 {
+    color: var(--theia-symbolIcon-numberForeground, #d7ba7d);
 }
 
 .can-frame-detail-panel {
-    display: grid;
-    grid-template-columns: minmax(280px, 1fr) minmax(260px, 1fr);
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
     gap: 12px;
     padding: 10px;
     border-top: 1px solid var(--theia-panel-border);
     background: var(--theia-editor-background);
+    box-sizing: border-box;
+    height: 170px;
+    min-height: 96px;
+    max-height: calc(100% - 140px);
+    overflow-y: auto;
+}
+
+.can-frame-detail-resizer {
+    position: relative;
+    flex: 0 0 7px;
+    height: 7px;
+    margin-bottom: -7px;
+    z-index: 2;
+    cursor: ns-resize;
+    touch-action: none;
+}
+
+.can-frame-detail-resizer::after {
+    content: '';
+    position: absolute;
+    left: calc(50% - 24px);
+    top: 2px;
+    width: 48px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--theia-panel-border);
+}
+
+.can-frame-detail-resizer:hover::after,
+.can-frame-detail-resizer.dragging::after {
+    background: var(--theia-focusBorder);
+}
+
+.can-frame-detail-panel .can-inspector-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--theia-panel-border);
+}
+
+.can-frame-detail-panel .can-inspector-header h3 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--theia-descriptionForeground);
+}
+
+.can-frame-detail-panel .can-decoded-info {
+    font-family: var(--theia-code-font-family, monospace);
+    font-size: 11px;
+    color: var(--theia-descriptionForeground);
+    padding: 4px 8px;
+    background: var(--theia-input-background);
+    border-radius: 3px;
 }
 
 .can-payload-inspector,
@@ -219,6 +338,30 @@
     gap: 4px;
     min-height: 25px;
     font-family: var(--theia-code-font-family, monospace);
+}
+
+.can-payload-selection-hint {
+    margin: -3px 0 6px;
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+}
+
+.can-payload-selection-controls {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 6px;
+}
+
+.can-payload-selection-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+}
+
+.can-payload-selection-controls input {
+    width: 48px;
 }
 
 .can-payload-byte {
@@ -252,12 +395,527 @@
     font-family: var(--theia-code-font-family, monospace);
 }
 
+.can-typed-field-value {
+    white-space: pre-line;
+}
+
 .can-typed-field-decoder .theia-select {
     margin-right: 8px;
 }
 
-@media (max-width: 700px) {
-    .can-frame-detail-panel {
-        grid-template-columns: 1fr;
-    }
+.can-typed-field-divisor-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+}
+
+.can-typed-field-divisor {
+    width: 76px;
+}
+
+.can-payload-change-toggle {
+    display: block;
+    margin-top: 3px;
+    color: var(--theia-descriptionForeground);
+    font-size: 10px;
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+.can-payload-change-toggle input {
+    margin: 0 3px 0 0;
+    vertical-align: middle;
+}
+
+/* ----- CAN Value Analyzer ----- */
+
+.can-value-analyzer-widget {
+    overflow: hidden;
+}
+
+.can-value-toolbar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+}
+
+.can-value-chart-container {
+    flex: 1;
+    min-height: 120px;
+    width: 100%;
+    background-color: var(--theia-editor-background);
+    position: relative;
+    box-sizing: border-box;
+}
+
+.can-value-id-input {
+    width: 96px;
+}
+
+.can-value-byte-input {
+    width: 52px;
+}
+
+.can-value-divisor-input {
+    width: 76px;
+}
+
+.can-value-custom-window-input {
+    width: 72px;
+}
+
+.can-value-custom-window-unit {
+    margin-left: -5px;
+    color: var(--theia-descriptionForeground);
+}
+
+.can-value-status {
+    margin-left: auto;
+    font-size: calc(var(--theia-ui-font-size) - 1px);
+    white-space: nowrap;
+}
+
+/* Multi-byte selection in Frame Payload Inspector */
+.can-payload-byte.multi-selected-start {
+    border-radius: 3px 0 0 3px;
+    background: var(--theia-list-activeSelectionBackground);
+    border-color: var(--theia-focusBorder);
+}
+
+.can-payload-byte.multi-selected-middle {
+    border-radius: 0;
+    background: var(--theia-list-activeSelectionBackground);
+    border-color: var(--theia-focusBorder);
+}
+
+.can-payload-byte.multi-selected-end {
+    border-radius: 0 3px 3px 0;
+    background: var(--theia-list-activeSelectionBackground);
+    border-color: var(--theia-focusBorder);
+}
+
+.can-payload-byte.multi-selected-single {
+    border-radius: 3px;
+    background: var(--theia-list-activeSelectionBackground);
+    border-color: var(--theia-focusBorder);
+}
+
+/* =============================================================================
+ * Global Variables Table & Widget Styles
+ * ============================================================================= */
+
+.global-variables-widget {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    background-color: var(--theia-layout-color0);
+    color: var(--theia-ui-font-color);
+    font-family: var(--theia-ui-font-family);
+    font-size: var(--theia-ui-font-size);
+    overflow: hidden;
+}
+
+.global-vars-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.global-vars-search-wrapper {
+    flex: 1;
+    min-width: 180px;
+    max-width: 320px;
+}
+
+.global-vars-search {
+    width: 100%;
+    padding: 3px 8px;
+    height: 24px;
+}
+
+.global-vars-summary {
+    margin-left: auto;
+    font-size: calc(var(--theia-ui-font-size) - 1px);
+    color: var(--theia-descriptionForeground);
+    font-weight: 500;
+}
+
+.global-vars-add-form {
+    padding: 12px 16px;
+    background-color: var(--theia-layout-color2);
+    border-bottom: 1px solid var(--theia-border);
+    animation: fadeIn 0.15s ease;
+}
+
+.global-vars-add-form h4 {
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--theia-ui-font-color0);
+}
+
+.global-vars-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.global-vars-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: var(--theia-ui-font-size);
+}
+
+.global-vars-form-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.global-vars-table-container {
+    flex: 1;
+    overflow: auto;
+    background-color: var(--theia-layout-color0);
+}
+
+.global-vars-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: var(--theia-editorWidget-background, #252526);
+}
+
+.global-vars-table th {
+    position: sticky;
+    top: 0;
+    background-color: var(--theia-editorWidget-background, #252526);
+    border-bottom: 1px solid var(--theia-border, #3c3c3c);
+    box-shadow: 0 1px 0 var(--theia-border, #3c3c3c), 0 2px 6px rgba(0, 0, 0, 0.45);
+    padding: 6px 10px;
+    text-align: left;
+    font-weight: 600;
+    z-index: 10;
+}
+
+.global-vars-table td {
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--theia-tree-inactiveIndentGuidesStroke, rgba(128, 128, 128, 0.2));
+    vertical-align: middle;
+}
+
+.global-var-row:hover {
+    background-color: var(--theia-list-hoverBackground);
+}
+
+.global-var-name {
+    font-family: var(--theia-code-font-family, monospace);
+    font-weight: bold;
+    color: var(--theia-editorInfo-foreground, #3794ff);
+}
+
+.global-var-group {
+    color: var(--theia-descriptionForeground);
+}
+
+.global-var-type-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--theia-code-font-family, monospace);
+    background-color: var(--theia-badge-background);
+    color: var(--theia-badge-foreground);
+}
+
+.global-var-type-badge.type-bool {
+    background-color: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+}
+
+.global-var-type-badge.type-string {
+    background-color: rgba(255, 152, 0, 0.2);
+    color: #ff9800;
+}
+
+.global-var-type-badge.type-bytes {
+    background-color: rgba(156, 39, 176, 0.2);
+    color: #ba68c8;
+}
+
+.global-var-value-cell {
+    font-family: var(--theia-code-font-family, monospace);
+}
+
+.global-var-value-input {
+    width: 100%;
+    min-width: 100px;
+    max-width: 220px;
+    height: 22px;
+    padding: 2px 6px;
+    font-family: var(--theia-code-font-family, monospace);
+    font-size: 12px;
+}
+
+.global-var-value-input.input-error {
+    border-color: var(--theia-inputValidation-errorBorder, #f44336) !important;
+    background-color: var(--theia-inputValidation-errorBackground, rgba(244, 67, 54, 0.1));
+}
+
+.global-var-quality-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.global-var-quality-badge.quality-good {
+    background-color: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+}
+
+.global-var-quality-badge.quality-stale {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+}
+
+.global-var-quality-badge.quality-invalid {
+    background-color: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+}
+
+.global-var-quality-badge.quality-disconnected {
+    background-color: rgba(158, 158, 158, 0.2);
+    color: #9e9e9e;
+}
+
+.global-var-updated {
+    font-size: 11px;
+    color: var(--theia-descriptionForeground);
+    font-family: var(--theia-code-font-family, monospace);
+}
+
+.global-var-actions .icon-only {
+    padding: 2px 6px;
+    height: 22px;
+}
+
+/* Bit Selection & Grid */
+.can-payload-bitmode-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--theia-foreground);
+}
+
+.can-payload-bits-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.can-payload-bits-header {
+    font-size: 11px;
+    font-family: var(--theia-code-font-family, monospace);
+    color: var(--theia-descriptionForeground);
+}
+
+.can-payload-bits-grid {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.can-payload-bit-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 4px;
+    border: 1px solid var(--theia-input-border, #3c3c3c);
+    background: var(--theia-editor-background, #1e1e1e);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    padding: 2px;
+}
+
+.can-payload-bit-btn .bit-idx {
+    font-size: 10px;
+    color: var(--theia-descriptionForeground, #888);
+}
+
+.can-payload-bit-btn .bit-val {
+    font-size: 14px;
+    font-weight: bold;
+    font-family: var(--theia-code-font-family, monospace);
+}
+
+.can-payload-bit-btn.bit-one .bit-val {
+    color: #4ec9b0;
+}
+
+.can-payload-bit-btn.bit-zero .bit-val {
+    color: #ce9178;
+}
+
+.can-payload-bit-btn:hover {
+    border-color: var(--theia-focusBorder, #007acc);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.can-payload-bit-btn.selected {
+    border-color: #007acc;
+    background: rgba(0, 122, 204, 0.25);
+    box-shadow: 0 0 4px rgba(0, 122, 204, 0.5);
+}
+
+/* Payload Inspector Header & Bind Button */
+.can-payload-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.can-payload-header-row h3 {
+    margin: 0;
+}
+
+.can-typed-field-header h3 {
+    margin: 0;
+}
+
+.can-bind-variable-btn {
+    font-size: 12px;
+    padding: 3px 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Bind Modal Dialog */
+.can-bind-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(2px);
+}
+
+.can-bind-modal {
+    background: var(--theia-editor-background, #1e1e1e);
+    border: 1px solid var(--theia-input-border, #3c3c3c);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    width: 460px;
+    max-width: 90%;
+    max-height: 90%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+}
+
+.can-bind-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--theia-input-border, #333);
+    padding-bottom: 8px;
+}
+
+.can-bind-modal-header h4 {
+    margin: 0;
+    font-size: 14px;
+    color: var(--theia-foreground);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.can-bind-info-bar {
+    background: var(--theia-input-background, #252526);
+    border: 1px solid var(--theia-input-border, #333);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--theia-foreground);
+    font-family: var(--theia-code-font-family, monospace);
+}
+
+.can-bind-mode-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+}
+
+.can-bind-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.can-bind-form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.can-bind-form-row label {
+    font-size: 11px;
+    color: var(--theia-descriptionForeground);
+}
+
+.can-active-bindings-list {
+    border-top: 1px solid var(--theia-input-border, #333);
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.can-active-bindings-list h5 {
+    margin: 0 0 4px 0;
+    font-size: 11px;
+    color: var(--theia-descriptionForeground);
+}
+
+.can-binding-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--theia-input-background, #252526);
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.can-bind-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+    border-top: 1px solid var(--theia-input-border, #333);
+    padding-top: 12px;
 }

@@ -33,6 +33,42 @@ Poniżej tabeli działają trzy komponenty:
 Typy wielobajtowe wymagają, by od wskazanego bajtu w ramce było wystarczająco
 dużo danych. Pole pozostaje powiązane z aktualnie wybraną ramką Matrix.
 
+## CAN Value Analyzer — wykres wartości w czasie
+
+**CAN Value Analyzer** izoluje jedno pole ładunku ramki (np. bajty 4–5 jako
+wartość analogowa) i obrazuje je w czasie. Widżet otwiera się jako osobna
+zakładka obok CAN ID Matrix przyciskiem **Plot Value** (ikona wykresu)
+w pasku narzędzi Matrixa. Prekonfiguruje się automatycznie z:
+
+- zaznaczonego wiersza Matrixa (CAN ID, typ STD/EXT),
+- zaznaczenia w **Frame Payload Inspector** (bajt startowy i długość),
+- ustawień **Typed Field Decoder** (typ, endianowość, dzielnik).
+
+Ponieważ wszystkie widżety CAN współdzielą jeden singleton `CanRpcClient`
+(jeden kanał RPC per WebSocket), Value Analyzer subskrybuje to samo zdarzenie
+`onBinaryFrames: Event<ArrayBuffer>` i samodzielnie skanuje partie binarne
+(`extractSamplesFromChunk` w `value-signal-extractor.ts`): walidacja magic +
+CRC32, filtr po ID/typie/interfejsie i ekstrakcja wartości — bez alokacji
+obiektów na ramkę (bufory `Float64Array` w pierścieniu `ValueSampleStore`).
+
+Sterowanie w pasku narzędzi widżetu:
+
+| Kontrolka | Opis |
+| --- | --- |
+| **Start / Stop / Pause / Clear** | stan przechwytywania i czyszczenie bufora |
+| **ID** (+ Ext) | identyfikator CAN (hex `0x...` lub dziesiętnie) |
+| **Interface** | wybór z listy interfejsów otwartych analizatorów (`All` = bez filtra) |
+| **Byte / Len** | bajt startowy i długość pola (1–8) |
+| **Type / Endian / Divisor** | typ dekodowania (`UINT`/`INT` o dowolnej długości 1–8 bajtów, typy stałe `UINT8`…`FLOAT64`), endianowość i dzielnik wyniku |
+| **Auto window** | okno czasowe = 5 × estymowany okres sygnału (estymacja EMA z odstępów próbek), zawsze w zakresie 1 ms–1 s |
+| **Window** | ręczna podstawa czasu: 1, 2, 5, 10, 20, 50, 100, 250, 500, 1000 ms |
+
+Wykres rysuje sygnał schodkowy (zero-order hold) na kanwie z obsługą
+wysokiego DPI i kolorami motywu Theia; oś X to czas względny do „now",
+oś Y skaluje się automatycznie z 10% marginesem. Status pokazuje estymowany
+okres/częstotliwość i liczbę próbek w buforze (pierścień 8192 próbek —
+najstarsze są nadpisywane).
+
 ## 1. Architektura Dwuwarstwowa
 
 Pakiet `@theia/can-bus` został zaprojektowany jako hybrydowe rozszerzenie Eclipse Theia z wyraźnym podziałem na warstwę wykonywczą Node.js (Backend) oraz warstwę prezentacji (Browser Frontend).
@@ -67,13 +103,13 @@ Przesył danych z serwera do przeglądarki odbywa się za pomocą zoptymalizowan
 
 ### Nagłówek Koperty (12 Bajtów)
 
-* `[0..3]`: Magic ID: `0x43414E30` (`CAN0` w formacie ASCII)
+- `[0..3]`: Magic ID: `0x43414E30` (`CAN0` w formacie ASCII)
 - `[4..7]`: `frameCount` (Uint32, liczba ramek zawartych w paczce)
 - `[8..11]`: `crc32` (Uint32, suma kontrolna IEEE 802.3 wyliczona dla całego ładunku ramek)
 
 ### Pojedyncza Ramka w Ładunku
 
-* `Timestamp` (Float64, 8B): czas nadejścia w ms.
+- `Timestamp` (Float64, 8B): czas nadejścia w ms.
 - `ID + Flags` (Uint32, 4B): 29-bit / 11-bit ID oraz flagi `extended`, `rtr`, `error`.
 - `DLC` (Uint8, 1B): Długość danych payload (0-8 bajtów).
 - `Interface Name Length` (Uint8, 1B): Długość nazwy interfejsu w bajtach UTF-8.
@@ -90,7 +126,7 @@ Struktura danych operująca na prealokowanej tablicy wskaźników bez wywołań 
 
 ### 3.2. Rendering DOM i Throttling (`can-widget.ts`)
 
-* **DOM Pooling:** Tabela statystyk utrzymuje dokładnie 50 gotowych węzłów DOM, podmieniając wyłącznie ich zawartość `textContent` (zgodnie z dyrektywami jakościowymi DoD — zero użycia `innerHTML`).
+- **DOM Pooling:** Tabela statystyk utrzymuje dokładnie 50 gotowych węzłów DOM, podmieniając wyłącznie ich zawartość `textContent` (zgodnie z dyrektywami jakościowymi DoD — zero użycia `innerHTML`).
 - **20 FPS Throttled RAF:** Aktualizacja interfejsu odbywa się za pomocą `requestAnimationFrame` z bramką czasową 45-50ms, oszczędzając czas procesora użytkownika dla wygładzonej animacji.
 
 ### 3.3. Canvas2D i Dynamiczne Motywy (`fps-canvas.ts`)

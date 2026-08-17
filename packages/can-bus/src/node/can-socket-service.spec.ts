@@ -18,6 +18,21 @@ import { expect } from 'chai';
 import { CanSocketServiceImpl, CanSimulatorAdapter, CanHardwareAdapter } from './can-socket-service';
 import { CanFrame, CanInterfaceConfig } from '../common/can-protocol';
 
+/** Testable subclass that exposes the protected frame generator. */
+class TestableCanSimulatorAdapter extends CanSimulatorAdapter {
+    public testGenerateFrame(slot: number, counter: number, elapsedNs: bigint, elapsedSeconds: number): CanFrame {
+        return (this as any).generateFrameForSlot(slot, counter, elapsedNs, elapsedSeconds);
+    }
+}
+
+// Canonical 20 IDs
+const EXPECTED_IDS = [
+    0x100, 0x101, 0x102, 0x103, 0x104,  // Group A
+    0x110, 0x111, 0x112, 0x113, 0x114, 0x115, 0x116,  // Group B
+    0x120, 0x121, 0x122, 0x123, 0x124, 0x125,  // Group C
+    0x130, 0x131  // UINT16 + INT16
+];
+
 describe('CanSimulatorAdapter', () => {
     it('delivers frames at approximately the configured rate', async () => {
         const frames: CanFrame[] = [];
@@ -25,30 +40,205 @@ describe('CanSimulatorAdapter', () => {
         adapter.configure({ name: 'test', bitrate: 1000 });
         adapter.start(f => frames.push(f));
 
-        // Wait for ~2 intervals (2 frames expected at 1000 fps)
-        await new Promise<void>(resolve => setTimeout(resolve, 3));
+        await new Promise<void>(resolve => setTimeout(resolve, 15));
         adapter.stop();
 
         expect(frames.length).to.be.at.least(1);
-        expect(frames.length).to.be.at.most(3);
     });
 
-    it('generates alternating standard and extended frames', async () => {
-        const frames: CanFrame[] = [];
-        const adapter = new CanSimulatorAdapter();
-        adapter.configure({ name: 'test', bitrate: 200 });
-        adapter.start(f => frames.push(f));
+    it('generates exactly 20 standard 11-bit IDs', () => {
+        const adapter = new TestableCanSimulatorAdapter();
+        adapter.configure({ name: 'test', bitrate: 1000 });
 
-        await new Promise<void>(resolve => setTimeout(resolve, 100));
-        adapter.stop();
+        const ids = new Set<number>();
+        for (let slot = 0; slot < 20; slot++) {
+            const frame = adapter.testGenerateFrame(slot, 0, 0n, 0);
+            ids.add(frame.id);
+            expect(frame.extended, `ID 0x${frame.id.toString(16)} should be standard frame`).to.be.false;
+        }
 
-        // At 200fps with a 100ms wait we expect at least a few frames.
-        // Frame 5 (every 5th) is extended (29-bit); others are standard (11-bit).
-        expect(frames.length, `expected at least 5 frames, got ${frames.length}`).to.be.at.least(5);
-        const hasStandard = frames.some(f => !f.extended);
-        const hasExtended = frames.some(f => f.extended);
-        expect(hasStandard, 'should generate standard (11-bit) frames').to.be.true;
-        expect(hasExtended, 'should generate extended (29-bit) frames').to.be.true;
+        expect(ids.size).to.equal(20);
+        for (const expectedId of EXPECTED_IDS) {
+            expect(ids.has(expectedId), `should include ID 0x${expectedId.toString(16)}`).to.be.true;
+        }
+    });
+
+    it('generates no IDs outside the defined set even after many frames', () => {
+        const adapter = new TestableCanSimulatorAdapter();
+        adapter.configure({ name: 'test', bitrate: 1000 });
+
+        const ids = new Set<number>();
+        for (let slot = 0; slot < 20; slot++) {
+            for (let counter = 0; counter < 100; counter++) {
+                const frame = adapter.testGenerateFrame(slot, counter, 0n, 0);
+                ids.add(frame.id);
+            }
+        }
+
+        expect(ids.size).to.equal(20);
+        for (const id of ids) {
+            expect(EXPECTED_IDS).to.include(id, `ID 0x${id.toString(16)} should be in the defined set`);
+        }
+    });
+
+    it('Group A (0x100-0x104) payloads are constant across counters', () => {
+        const adapter = new TestableCanSimulatorAdapter();
+        adapter.configure({ name: 'test', bitrate: 1000 });
+
+        for (let slot = 0; slot < 5; slot++) {
+            const frame0 = adapter.testGenerateFrame(slot, 0, 0n, 0);
+            const frame1 = adapter.testGenerateFrame(slot, 1, 0n, 0);
+            const frame100 = adapter.testGenerateFrame(slot, 100, 0n, 0);
+            expect(frame1.data).to.deep.equal(frame0.data, `0x${frame0.id.toString(16)} should not change`);
+            expect(frame100.data).to.deep.equal(frame0.data, `0x${frame0.id.toString(16)} should not change after 100 frames`);
+        }
+    });
+
+    it('Group A payloads match expected constant values', () => {
+        const adapter = new TestableCanSimulatorAdapter();
+        adapter.configure({ name: 'test', bitrate: 1000 });
+
+        const expectedPayloads = [
+            [0x0A, 0x14, 0x1E, 0x28, 0x32, 0x3C, 0x46, 0x50],  // 0x100: 10,20,30,40,50,60,70,80
+            [0x0B, 0x15, 0x1F, 0x29, 0x33, 0x3D, 0x47, 0x51],  // 0x101
+            [0x0C, 0x16, 0x20, 0x2A, 0x34, 0x3E, 0x48, 0x52],  // 0x102
+            [0x0D, 0x17, 0x21, 0x2B, 0x35, 0x3F, 0x49, 0x53],  // 0x103
+            [0x0E, 0x18, 0x22, 0x2C, 0x36, 0x40, 0x4A, 0x54],  // 0x104
+        ];
+
+        for (let slot = 0; slot < 5; slot++) {
+            const frame = adapter.testGenerateFrame(slot, 0, 0n, 0);
+            expect(frame.data).to.deep.equal(expectedPayloads[slot],
+                `0x${frame.id.toString(16)} payload mismatch`);
+        }
+    });
+
+    it('Group B (0x110-0x116) changes only designated bytes', () => {
+        const adapter = new TestableCanSimulatorAdapter();
+        adapter.configure({ name: 'test', bitrate: 1000 });
+
+        // Slots 5-11 correspond to 0x110-0x116
+        for (let slot = 5; slot <= 11; slot++) {
+            const frame0 = adapter.testGenerateFrame(slot, 0, 0n, 0);
+            const frame1 = adapter.testGenerateFrame(slot, 1, 0n, 0);
+
+            const changedIndices: number[] = [];
+            for (let i = 0; i < 8; i++) {
+                if (frame0.data[i] !== frame1.data[i]) {
+                    changedIndices.push(i);
+                }
+            }
+
+            const id = frame0.id;
+            // Verify which bytes changed match the spec
+            switch (id) {
+                case 0x110: expect(changedIndices).to.deep.equal([0]); break;
+                case 0x111: expect(changedIndices).to.deep.equal([1]); break;
+                case 0x112: expect(changedIndices).to.deep.equal([2, 3]); break;
+                case 0x113: expect(changedIndices).to.deep.equal([4]); break;
+                case 0x114: expect(changedIndices).to.include(5); expect(changedIndices).to.include(6); break;
+                case 0x115: expect(changedIndices).to.deep.equal([7]); break;
+                case 0x116: expect(changedIndices).to.include(0); expect(changedIndices).to.include(3); expect(changedIndices).to.include(7); break;
+            }
+
+            // Verify constant bytes didn't change
+            for (let i = 0; i < 8; i++) {
+                if (!changedIndices.includes(i)) {
+                    expect(frame1.data[i]).to.equal(frame0.data[i],
+                        `0x${id.toString(16)} byte ${i} should be constant`);
+                }
+            }
+        }
+    });
+
+    it('Group C (0x120-0x125) changes every frame deterministically', () => {
+        const adapter = new TestableCanSimulatorAdapter();
+        adapter.configure({ name: 'test', bitrate: 1000 });
+
+        for (let slot = 12; slot <= 17; slot++) {
+            const frame0 = adapter.testGenerateFrame(slot, 0, 0n, 0);
+            const frame1 = adapter.testGenerateFrame(slot, 1, 0n, 0);
+            const frame2 = adapter.testGenerateFrame(slot, 2, 0n, 0);
+
+            // Each frame should differ from the previous one
+            const differs01 = frame0.data.some((b, i) => b !== frame1.data[i]);
+            const differs12 = frame1.data.some((b, i) => b !== frame2.data[i]);
+            expect(differs01, `0x${frame0.id.toString(16)} should differ between counter 0 and 1`).to.be.true;
+            expect(differs12, `0x${frame0.id.toString(16)} should differ between counter 1 and 2`).to.be.true;
+
+            // Patterns should be deterministic - same counter = same data
+            const frame0Again = adapter.testGenerateFrame(slot, 0, 0n, 0);
+            expect(frame0Again.data).to.deep.equal(frame0.data,
+                `0x${frame0.id.toString(16)} should be deterministic`);
+        }
+    });
+
+    it('0x130 contains correct UINT16 Little Endian incrementing values', () => {
+        const adapter = new TestableCanSimulatorAdapter();
+        adapter.configure({ name: 'test', bitrate: 1000 });
+        const slot = 18; // 0x130
+
+        const frame0 = adapter.testGenerateFrame(slot, 0, 0n, 0);
+        expect(frame0.id).to.equal(0x130);
+        expect(frame0.data[0]).to.equal(0x00);  // 0*10 = 0 LE
+        expect(frame0.data[1]).to.equal(0x00);
+        // Bytes 2-7 should be 0x55
+        for (let i = 2; i < 8; i++) {
+            expect(frame0.data[i]).to.equal(0x55);
+        }
+
+        const frame1 = adapter.testGenerateFrame(slot, 1, 0n, 0);
+        expect(frame1.data[0]).to.equal(0x0A);  // 1*10 = 10 LE
+        expect(frame1.data[1]).to.equal(0x00);
+
+        const frame100 = adapter.testGenerateFrame(slot, 100, 0n, 0);
+        const expected100 = (100 * 10) & 0xFFFF;  // 1000 = 0x03E8
+        expect(frame100.data[0]).to.equal(expected100 & 0xFF);
+        expect(frame100.data[1]).to.equal((expected100 >> 8) & 0xFF);
+
+        // Wrap test: counter 6554 -> 65540 mod 65536 = 4
+        const frameWrap = adapter.testGenerateFrame(slot, 6554, 0n, 0);
+        expect(frameWrap.data[0]).to.equal(0x04);
+        expect(frameWrap.data[1]).to.equal(0x00);
+    });
+
+    it('0x131 contains correct INT16 Little Endian 0.2 Hz sinusoid', () => {
+        const adapter = new TestableCanSimulatorAdapter();
+        adapter.configure({ name: 'test', bitrate: 1000 });
+        const slot = 19; // 0x131
+
+        // t=0: sin(0) = 0 -> value = 0
+        const frame0 = adapter.testGenerateFrame(slot, 0, 0n, 0);
+        expect(frame0.id).to.equal(0x131);
+        expect(frame0.data[0]).to.equal(0x00);
+        expect(frame0.data[1]).to.equal(0x00);
+        // Bytes 2-7 should be 0xAA
+        for (let i = 2; i < 8; i++) {
+            expect(frame0.data[i]).to.equal(0xAA);
+        }
+
+        // t=1.25s: sin(2*pi*0.2*1.25) = sin(pi/2) = 1 -> value = 10000 = 0x2710
+        const framePeak = adapter.testGenerateFrame(slot, 0, BigInt(1_250_000_000), 1.25);
+        const expectedPeak = 10000;
+        expect(framePeak.data[0]).to.equal(expectedPeak & 0xFF);
+        expect(framePeak.data[1]).to.equal((expectedPeak >> 8) & 0xFF);
+
+        // t=2.5s: sin(2*pi*0.2*2.5) = sin(pi) = 0 -> value = 0
+        const frameZero = adapter.testGenerateFrame(slot, 0, BigInt(2_500_000_000), 2.5);
+        expect(frameZero.data[0]).to.equal(0x00);
+        expect(frameZero.data[1]).to.equal(0x00);
+
+        // t=3.75s: sin(2*pi*0.2*3.75) = sin(3*pi/2) = -1 -> value = -10000
+        const frameNeg = adapter.testGenerateFrame(slot, 0, BigInt(3_750_000_000), 3.75);
+        const expectedNeg = -10000;
+        const unsignedNeg = expectedNeg < 0 ? (expectedNeg + 65536) : expectedNeg;
+        expect(frameNeg.data[0]).to.equal(unsignedNeg & 0xFF);
+        expect(frameNeg.data[1]).to.equal((unsignedNeg >> 8) & 0xFF);
+
+        // t=5.0s: sin(2*pi*0.2*5) = sin(2*pi) = 0 -> full period, back to 0
+        const framePeriod = adapter.testGenerateFrame(slot, 0, BigInt(5_000_000_000), 5.0);
+        expect(framePeriod.data[0]).to.equal(0x00);
+        expect(framePeriod.data[1]).to.equal(0x00);
     });
 
     it('stops producing frames after stop()', async () => {
@@ -63,7 +253,6 @@ describe('CanSimulatorAdapter', () => {
         const countAfterStop = frames.length;
         await new Promise<void>(resolve => setTimeout(resolve, 20));
 
-        // No new frames should arrive after stop()
         expect(frames.length).to.equal(countAfterStop);
     });
 
@@ -73,7 +262,7 @@ describe('CanSimulatorAdapter', () => {
         adapter.configure({ name: 'test', bitrate: 200 });
 
         adapter.start(f => frames.push(f));
-        await new Promise<void>(resolve => setTimeout(resolve, 30));
+        await new Promise<void>(resolve => setTimeout(resolve, 50));
         adapter.stop();
 
         for (let i = 1; i < frames.length; i++) {
@@ -156,7 +345,7 @@ describe('CanSocketServiceImpl', () => {
         const config: CanInterfaceConfig = { name: 'test', bitrate: 1000 };
         service.start(config);
 
-        await new Promise<void>(resolve => setTimeout(resolve, 5));
+        await new Promise<void>(resolve => setTimeout(resolve, 10));
         service.stop();
 
         expect(received.length).to.be.at.least(1);
@@ -188,7 +377,6 @@ describe('CanSocketServiceImpl', () => {
 
         service.start({ name: 'test', bitrate: 100 });
         service.stop();
-        // A second stop should be safe too
         service.stop();
         expect(service.isCapturing).to.be.false;
     });

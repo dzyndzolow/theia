@@ -37,13 +37,17 @@ Ten dokument jest zywym rejestrem wykonania. Uzupelnia `SIGNAL-ANALYZER-ROADMAP.
 | SA-205 | ZAAKCEPTOWANE | Implementacja `UartDecoderProvider` w `@theia/signal-core` z opcjami baudrate/parity/stopBits i weryfikacją błędów framingu. (34/34 testy passing, 95.09% coverage). | Zadanie zamknięte. |
 | SA-206 | ZAAKCEPTOWANE | Stworzenie dokumentacji technicznej Fazy 2 `decoders-architecture.md` opisującej algorytm Kahna, cykl życia WebWorkera, zero-copy, Circuit Breaker i dekodery CAN/UART z diagramami Mermaid. | Koniec Fazy 2. Faza 3 (SA-301+) gotowa do realizacji. |
 | CAN-FIX | ZAAKCEPTOWANE | Naprawa błędu `stopCapture` dla nieprzypisanych widżetów oraz dodanie rozwijanego menu `Source:` w `CanMatrixWidget` pozwalającego wybierać dane z dowolnego otwartego `CAN Bus Analyzer`. (37/37 testy passing). | Gotowe do Fazy 3 (SA-301). |
+| CAN-PLOT | GOTOWE DO REWIZJI | Widżet **CAN Value Analyzer** w `@theia/can-bus`: izolacja pola ładunku (np. bajty 4–5) ramki o danym CAN ID i wykres wartości w czasie. Otwierany przyciskiem **Plot Value** w CAN ID Matrix, prekonfigurowany z wiersza Matrixa + Payload Inspector + Typed Field Decoder. Podstawa czasu 1 ms–1 s oraz tryb auto (5 × estymowany okres). Zero-allocation: pierścień `Float64Array`, parsowanie koperty binarnej bez obiektów ramek. (76/76 testy passing, 26 nowych). | Oczekuje na rewizję supervisora; potem Faza 3 (SA-301). |
+
+| GLOBAL-VARS | ZAAKCEPTOWANE | Centralny rejestr globalnych zmiennych w stylu PLC: kontrakty, rejestr `GlobalVariableRegistry` z walidacją 11 typów, wersjonowaniem, snapshotami JSON oraz widżet `GlobalVariablesWidget` z edytowalną tabelą i importem/eksportem. (52/52 testy signal-core, 79/79 testy can-bus passing). | Zadanie zakończone. |
 
 ## Kolejnosc pracy teraz
 
 1. Faza 0 (`@theia/can-bus`, SA-001..SA-008), Faza 1 (`@theia/signal-core`, SA-101..SA-106) oraz Faza 2 (SA-201..SA-206) zostały w pełni ukończone, przetestowane i udokumentowane.
 2. Naprawiono usterkę niepoprawnego wywoływania stopCapture oraz zaimplementowano dynamiczny wybór źródła analizatora w widżecie CAN ID Matrix.
-3. Następne zadanie: Faza 3 — SA-301 (`@theia/signal-ui` i `ViewportController`).
-4. Pełny plan i dowody są w `supervisor-report.md`; nie zastępuj go streszczeniami w rekordach zadań.
+3. Dodano widżet CAN Value Analyzer (rekord CAN-PLOT, GOTOWE DO REWIZJI) — wykres wartości pojedynczego pola ramki w czasie, otwierany z CAN ID Matrix.
+4. Następne zadanie: Faza 3 — SA-301 (`@theia/signal-ui` i `ViewportController`), po akceptacji CAN-PLOT.
+5. Pełny plan i dowody są w `supervisor-report.md`; nie zastępuj go streszczeniami w rekordach zadań.
 
 ## Rekomendacja dla kolejnego modelu
 
