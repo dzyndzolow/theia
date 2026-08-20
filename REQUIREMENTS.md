@@ -49,6 +49,7 @@ Główne pliki konfiguracyjne w repozytorium:
 - `examples/browser/package.json` – Konfiguracja aplikacji w wersji przeglądarkowej.
 - `examples/browser/log-config.json` – Ustawienia poziomów logowania.
 - `doc/PioArduino.md` – Integracja pioarduino IDE, poprawne uruchamianie i procedura diagnostyczna.
+- `doc/ai-agent-tools.md` – Plan udostępnienia narzędzi analizatora CAN agentom AI.
 - `CAN-BUS-ANALYZER-SUMMARY.md` – Wymagania i specyfikacja funkcjonalna analizatora CAN Bus.
 
 ---

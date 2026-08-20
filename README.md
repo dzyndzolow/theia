@@ -112,6 +112,7 @@ Read below how to engage with Theia community:
   - [Code Organization](doc/code-organization.md)
   - [Plugin and VSCode API](doc/Plugin-API.md)
   - [PioArduino integration and troubleshooting](doc/PioArduino.md)
+  - [Integracja narzędzi dla agentów AI](doc/ai-agent-tools.md)
 
 ## SBOM
 
