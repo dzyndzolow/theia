@@ -10,7 +10,7 @@ Dokument zawiera kompletne zestawienie wymagań środowiskowych, sprzętowych, k
 | --- | --- | --- |
 | **System Operacyjny** | Windows 10/11, Linux (Ubuntu/Debian/Arch), macOS | Przetestowane w środowisku Windows oraz Linux |
 | **Node.js** | `>= 22` (Zalecane: **Node.js 24.x**) | Wymagany do uruchomienia całego monorepo i aplikacji Theia |
-| **Menedżer pakietów** | **npm** (wbudowany w Node.js) | **Ważne:** Używaj wyłącznie `npm`, nie używaj `yarn` |
+| **Menedżer pakietów** | **npm** (wbudowany w Node.js) | Polecenia projektu uruchamiaj przez `npm`. Obecny skrypt `start-pioarduino.ps1` dodatkowo wywołuje wewnętrznie Yarn Classic. |
 | **Python** | Python 3.x | Wymagany przez `node-gyp` do kompilacji natywnych modułów C/C++ |
 | **Git** | `>= 2.11.0` | Wymagany do pracy z repozytorium oraz wtyczką Git w Theia |
 | **Kompilator C/C++** | **Windows:** Visual Studio Build Tools (C++ Desktop) / Scoop<br>**Linux:** `build-essential`, `g++`, `make`, `pkg-config`<br>**macOS:** Xcode Command Line Tools | Niezbędne do budowania natywnych zależności node-gyp (np. `serialport`, `keytar`, `native-keymap`) |
@@ -48,6 +48,7 @@ Główne pliki konfiguracyjne w repozytorium:
 - `tsconfig.json` & `configs/tsconfig.json` – Baza konfiguracji TypeScript.
 - `examples/browser/package.json` – Konfiguracja aplikacji w wersji przeglądarkowej.
 - `examples/browser/log-config.json` – Ustawienia poziomów logowania.
+- `doc/PioArduino.md` – Integracja pioarduino IDE, poprawne uruchamianie i procedura diagnostyczna.
 - `CAN-BUS-ANALYZER-SUMMARY.md` – Wymagania i specyfikacja funkcjonalna analizatora CAN Bus.
 
 ---
@@ -85,6 +86,14 @@ npm run download:plugins
   npm run start:browser
   ```
   Aplikacja dostępna pod adresem: `http://localhost:3000`
+
+- **Uruchomienie wersji Browser z PioArduino (Windows):**
+  ```powershell
+  cd examples\browser
+  npm run start:pioarduino
+  ```
+  Następnie otwórz w Theia bezpośredni katalog projektu zawierający `platformio.ini`.
+  Szczegóły i rozwiązania typowych problemów opisano w [przewodniku PioArduino](doc/PioArduino.md).
 
 - **Uruchomienie w wersji Electron (Desktop):**
   ```bash

@@ -104,13 +104,18 @@ export class GlobalVariablesWidget extends BaseWidget {
 
         const exportBtn = document.createElement('button');
         exportBtn.className = 'theia-button secondary';
-        exportBtn.innerHTML = '<i class="fa fa-download"></i> Export JSON';
+        exportBtn.innerHTML = '<i class="fa fa-download"></i> Export Map';
         exportBtn.onclick = () => this.handleExport();
 
         const importBtn = document.createElement('button');
         importBtn.className = 'theia-button secondary';
-        importBtn.innerHTML = '<i class="fa fa-upload"></i> Import JSON';
+        importBtn.innerHTML = '<i class="fa fa-upload"></i> Import Map';
         importBtn.onclick = () => this.handleImport();
+
+        const exportCsvBtn = document.createElement('button');
+        exportCsvBtn.className = 'theia-button secondary';
+        exportCsvBtn.innerHTML = '<i class="fa fa-table"></i> Export CSV';
+        exportCsvBtn.onclick = () => this.handleExportCsv();
 
         const clearBtn = document.createElement('button');
         clearBtn.className = 'theia-button secondary danger';
@@ -136,7 +141,7 @@ export class GlobalVariablesWidget extends BaseWidget {
         this.statusSummary = document.createElement('div');
         this.statusSummary.className = 'global-vars-summary';
 
-        this.toolbar.append(addBtn, exportBtn, importBtn, clearBtn, searchWrapper, this.statusSummary);
+        this.toolbar.append(addBtn, exportBtn, importBtn, exportCsvBtn, clearBtn, searchWrapper, this.statusSummary);
 
         // --- Add Dialog / Form ---
         this.addDialog = this.createAddDialog();
@@ -499,5 +504,35 @@ export class GlobalVariablesWidget extends BaseWidget {
             }
         };
         input.click();
+    }
+
+    protected handleExportCsv(): void {
+        const headers = ['id', 'name', 'type', 'length', 'writable', 'description', 'unit', 'group', 'source', 'currentValue'];
+        const rows = this.registry.list().map(variable => [
+            variable.definition.id,
+            variable.definition.name,
+            variable.definition.type,
+            variable.definition.length ?? '',
+            variable.definition.writable,
+            variable.definition.description ?? '',
+            variable.definition.unit ?? '',
+            variable.definition.group ?? '',
+            variable.definition.source ? JSON.stringify(variable.definition.source) : '',
+            this.formatValue(variable.state.value, variable.definition.type)
+        ]);
+        const csv = [headers, ...rows]
+            .map(row => row.map(value => this.escapeCsv(String(value))).join(','))
+            .join('\r\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `global-variables-${Date.now()}.csv`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+    }
+
+    protected escapeCsv(value: string): string {
+        return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
     }
 }

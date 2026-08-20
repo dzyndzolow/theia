@@ -51,6 +51,8 @@ export class FramePayloadInspector {
     protected selectedBitLength = 1;
     protected isBitSelectionActive = false;
     protected selectingWithMouse = false;
+    protected rangeConfirmationMode = false;
+    protected rangeSelectionPending = false;
 
     // Cache of byte elements to prevent flickering/lost clicks on live frame updates
     protected byteButtons: HTMLButtonElement[] = [];
@@ -154,6 +156,14 @@ export class FramePayloadInspector {
         return { dispose: () => this.bindListeners.delete(listener) };
     }
 
+    /** INT/UINT byte ranges can require an explicit second-click confirmation. */
+    public setRangeConfirmationMode(enabled: boolean): void {
+        this.rangeConfirmationMode = enabled;
+        this.rangeSelectionPending = false;
+        this.selectingWithMouse = false;
+        this.render();
+    }
+
     protected handleBindClick(): void {
         if (!this.frame) {
             return;
@@ -175,6 +185,7 @@ export class FramePayloadInspector {
             this.selectedBitIndex = 0;
             this.selectedBitLength = 1;
             this.isBitSelectionActive = false;
+            this.rangeSelectionPending = false;
         }
         this.render();
         if (!preserveSelection && frame && frame.data.length > 0) {
@@ -186,6 +197,7 @@ export class FramePayloadInspector {
     public setSelection(selection: PayloadSelection): void {
         this.selectionAnchor = Math.max(0, selection.startByte);
         this.selectionEnd = this.selectionAnchor + Math.max(1, selection.byteLength) - 1;
+        this.rangeSelectionPending = false;
         if (selection.startBit !== undefined) {
             this.selectedBitIndex = selection.startBit;
         }
@@ -230,7 +242,11 @@ export class FramePayloadInspector {
         this.title.textContent = `Frame Payload Inspector — 0x${this.frame.id.toString(16).toUpperCase()}`;
         const selection = this.getSelection();
         this.syncSelectionControls(selection);
-        this.selectionHint.textContent = 'Click a byte or drag across HEX bytes. Click a bit below for single-bit tracking.';
+        this.selectionHint.textContent = this.rangeConfirmationMode
+            ? (this.rangeSelectionPending
+                ? 'Select the end byte with a second click to confirm the INT/UINT range.'
+                : 'Click the first byte, then click the last byte to confirm the INT/UINT range.')
+            : 'Click a byte or drag across HEX bytes. Click a bit below for single-bit tracking.';
 
         const dataLen = this.frame.data.length;
 
@@ -252,13 +268,33 @@ export class FramePayloadInspector {
                         return;
                     }
                     event.preventDefault();
+                    if (this.rangeConfirmationMode) {
+                        if (!this.rangeSelectionPending) {
+                            this.selectionAnchor = i;
+                            this.selectionEnd = i;
+                            this.rangeSelectionPending = true;
+                            this.isBitSelectionActive = false;
+                            this.bitSelectionCheckbox.checked = false;
+                            this.render();
+                        } else {
+                            this.selectionEnd = i;
+                            this.rangeSelectionPending = false;
+                            this.isBitSelectionActive = false;
+                            this.bitSelectionCheckbox.checked = false;
+                            this.render();
+                            this.notifySelection();
+                        }
+                        return;
+                    }
                     this.selectingWithMouse = true;
                     this.selectionAnchor = i;
                     this.selectionEnd = i;
                     this.isBitSelectionActive = false;
                     this.bitSelectionCheckbox.checked = false;
                     this.render();
-                    this.notifySelection();
+                    if (!this.rangeConfirmationMode) {
+                        this.notifySelection();
+                    }
                 };
 
                 byteBtn.onpointerenter = () => {
@@ -288,6 +324,7 @@ export class FramePayloadInspector {
                 byteBtn.textContent = value.toString(16).padStart(2, '0').toUpperCase();
                 byteBtn.title = `Byte ${index} (0x${value.toString(16).toUpperCase().padStart(2, '0')})`;
                 byteBtn.classList.toggle('selected', isSelected);
+                byteBtn.classList.toggle('range-pending', this.rangeSelectionPending && isSelected);
             }
 
             const asciiSpan = this.asciiSpans[index];
@@ -385,6 +422,7 @@ export class FramePayloadInspector {
         const byteLength = Math.max(1, Math.min(this.frame.data.length - startByte, Math.trunc(Number(this.byteLengthInput.value) || 1)));
         this.selectionAnchor = startByte;
         this.selectionEnd = startByte + byteLength - 1;
+        this.rangeSelectionPending = false;
         this.isBitSelectionActive = false;
         this.bitSelectionCheckbox.checked = false;
         this.render();
@@ -395,6 +433,7 @@ export class FramePayloadInspector {
         this.selectedBitIndex = Math.max(0, Math.min(7, Math.trunc(Number(this.startBitInput.value) || 0)));
         this.selectedBitLength = Math.max(1, Math.min(8, Math.trunc(Number(this.bitLengthInput.value) || 1)));
         this.isBitSelectionActive = true;
+        this.rangeSelectionPending = false;
         this.bitSelectionCheckbox.checked = true;
         this.render();
         this.notifySelection();

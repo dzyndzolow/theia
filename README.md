@@ -111,6 +111,7 @@ Read below how to engage with Theia community:
   - [Coding Guidelines](doc/coding-guidelines.md)
   - [Code Organization](doc/code-organization.md)
   - [Plugin and VSCode API](doc/Plugin-API.md)
+  - [PioArduino integration and troubleshooting](doc/PioArduino.md)
 
 ## SBOM
 

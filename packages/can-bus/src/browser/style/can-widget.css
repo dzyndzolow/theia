@@ -318,6 +318,8 @@
 
 .can-payload-inspector,
 .can-typed-field-decoder {
+    /* Keep the bit grid and decoder header in separate flex rows. */
+    flex: 0 0 auto;
     min-height: 112px;
     padding: 8px;
     border: 1px solid var(--theia-panel-border);
@@ -429,7 +431,7 @@
     vertical-align: middle;
 }
 
-/* ----- CAN Value Analyzer ----- */
+/* ----- CAN Value Plot ----- */
 
 .can-value-analyzer-widget {
     overflow: hidden;
@@ -442,11 +444,58 @@
 
 .can-value-chart-container {
     flex: 1;
-    min-height: 120px;
+    min-height: 0;
     width: 100%;
     background-color: var(--theia-editor-background);
     position: relative;
     box-sizing: border-box;
+}
+
+.can-payload-byte.range-pending {
+    outline: 1px dashed var(--theia-focusBorder);
+    outline-offset: -2px;
+}
+
+.can-value-multi-chart {
+    display: flex;
+    gap: 8px;
+    overflow: hidden;
+}
+
+.can-value-multi-chart .can-chart-canvas {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.can-value-series-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 0;
+    margin: 4px 0;
+}
+
+.can-value-series-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px;
+    border: 1px solid var(--theia-panel-border);
+    border-radius: 3px;
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+}
+
+.can-value-series-row .theia-button {
+    padding: 1px 6px;
+    font-size: 10px;
+}
+
+.can-value-variable-select {
+    min-width: 150px;
 }
 
 .can-value-id-input {
@@ -463,6 +512,11 @@
 
 .can-value-custom-window-input {
     width: 72px;
+}
+
+.can-value-scale-input,
+.can-value-offset-input {
+    width: 64px;
 }
 
 .can-value-custom-window-unit {

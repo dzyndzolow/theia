@@ -66,6 +66,7 @@ export class CanMatrixWidget extends BaseWidget {
     @inject(CanVariableBridge)
     protected readonly canVariableBridge!: CanVariableBridge;
 
+
     protected readonly explorer = new MatrixMessageExplorer();
     protected matrixMap = new Map<string, CanMatrixRow>();
     protected isPaused = false;
@@ -108,8 +109,12 @@ export class CanMatrixWidget extends BaseWidget {
             this.payloadInspector.setSelection(this.typedFieldDecoder.getSelection());
         });
         this.typedFieldDecoder.onSelectionChanged(() => {
+            const type = this.typedFieldDecoder.getType();
+            this.payloadInspector.setRangeConfirmationMode(type === 'INT' || type === 'UINT');
             this.payloadInspector.setSelection(this.typedFieldDecoder.getSelection());
         });
+        const initialType = this.typedFieldDecoder.getType();
+        this.payloadInspector.setRangeConfirmationMode(initialType === 'INT' || initialType === 'UINT');
         this.payloadInspector.onDidRequestBind(request => {
             const type = this.typedFieldDecoder.getType();
             const littleEndian = this.typedFieldDecoder.isLittleEndian();
@@ -427,11 +432,6 @@ export class CanMatrixWidget extends BaseWidget {
         clearBtn.innerHTML = '<i class="fa fa-trash"></i> Clear Matrix';
         clearBtn.onclick = () => this.clearMatrix();
 
-        const exportBtn = document.createElement('button');
-        exportBtn.className = 'theia-button secondary';
-        exportBtn.innerHTML = '<i class="fa fa-download"></i> Export CSV';
-        exportBtn.onclick = () => this.exportCsv();
-
         this.filterInputEl = document.createElement('input');
         this.filterInputEl.type = 'text';
         this.filterInputEl.placeholder = 'Filter by ID (e.g. 102 or 0x102)...';
@@ -463,7 +463,6 @@ export class CanMatrixWidget extends BaseWidget {
         this.toolbarEl.appendChild(stopBtn);
         this.toolbarEl.appendChild(pauseBtn);
         this.toolbarEl.appendChild(clearBtn);
-        this.toolbarEl.appendChild(exportBtn);
         this.toolbarEl.appendChild(sourceLabel);
         this.toolbarEl.appendChild(this.filterInputEl);
         this.toolbarEl.appendChild(statsSpan);
@@ -574,21 +573,6 @@ export class CanMatrixWidget extends BaseWidget {
         this.payloadInspector.setFrame(undefined);
         this.typedFieldDecoder.setFrame(undefined);
         this.dirty = true;
-    }
-
-    public exportCsv(): void {
-        const rows: string[] = ['CAN_ID_HEX,Type,DLC,Count,Freq_Hz,Period_ms,Data_Hex,Interface'];
-        for (const row of this.matrixMap.values()) {
-            const hexData = row.data.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
-            rows.push(`${row.hexId},${row.extended ? 'EXT' : 'STD'},${row.dlc},${row.count},${row.freqHz},${row.deltaMs},"${hexData}",${row.interface}`);
-        }
-        const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `can_matrix_export_${Date.now()}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
     }
 
     protected scheduleRender(): void {

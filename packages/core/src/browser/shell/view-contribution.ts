@@ -38,6 +38,7 @@ export interface ViewContributionOptions {
     widgetName: string;
     defaultWidgetOptions: ApplicationShell.WidgetOptions;
     toggleCommandId?: string;
+    toggleCommandLabel?: string;
     toggleKeybinding?: string;
 }
 
@@ -70,7 +71,7 @@ export abstract class AbstractViewContribution<T extends Widget> implements Comm
             this.toggleCommand = {
                 id: options.toggleCommandId,
                 category: nls.localizeByDefault('View'),
-                label: nls.localizeByDefault('Toggle {0}', this.viewLabel)
+                label: options.toggleCommandLabel ?? nls.localizeByDefault('Toggle {0}', this.viewLabel)
             };
         }
     }

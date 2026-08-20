@@ -31,7 +31,8 @@ export class GlobalVariablesViewContribution extends AbstractViewContribution<Gl
             defaultWidgetOptions: {
                 area: 'main'
             },
-            toggleCommandId: GlobalVariableCommands.OPEN_GLOBAL_VARIABLES
+            toggleCommandId: GlobalVariableCommands.OPEN_GLOBAL_VARIABLES,
+            toggleCommandLabel: GLOBAL_VARIABLES_WIDGET_LABEL
         });
     }
 

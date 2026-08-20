@@ -16,6 +16,14 @@ export interface ValuePlotColors {
     textColor?: string;
 }
 
+export interface ValuePlotSeries {
+    readonly name: string;
+    readonly store: ValueSampleStore;
+    readonly color?: string;
+    /** Vertical displacement applied after decoding, in displayed units. */
+    readonly offset?: number;
+}
+
 /**
  * Time/value margins of the plot area inside the canvas (CSS pixels).
  */
@@ -159,6 +167,118 @@ export class ValuePlotRenderer {
         ctx.stroke();
 
         ctx.restore();
+    }
+
+    /** Render multiple variables on one shared time/value plot. */
+    renderMany(
+        series: readonly ValuePlotSeries[],
+        windowMs: number,
+        now: number,
+        fixedRange?: { readonly min: number; readonly max: number }
+    ): void {
+        const ctx = this.canvas.getContext('2d');
+        if (!ctx) { return; }
+        const scale = this.dpr;
+        const cssW = this.canvas.width / scale;
+        const cssH = this.canvas.height / scale;
+        const plotX = VALUE_PLOT_MARGIN.left;
+        const plotY = VALUE_PLOT_MARGIN.top;
+        const plotW = Math.max(1, cssW - VALUE_PLOT_MARGIN.left - VALUE_PLOT_MARGIN.right);
+        const plotH = Math.max(1, cssH - VALUE_PLOT_MARGIN.top - VALUE_PLOT_MARGIN.bottom);
+        const windowStart = now - windowMs;
+
+        let min = fixedRange?.min ?? Number.POSITIVE_INFINITY;
+        let max = fixedRange?.max ?? Number.NEGATIVE_INFINITY;
+        let hasSamples = false;
+        for (const item of series) {
+            for (let i = 0; i < item.store.size; i++) {
+                if (item.store.timeAt(i) < windowStart) { continue; }
+                const value = item.store.valueAt(i) + (item.offset ?? 0);
+                if (!Number.isFinite(value)) { continue; }
+                hasSamples = true;
+                if (!fixedRange) {
+                    min = Math.min(min, value);
+                    max = Math.max(max, value);
+                }
+            }
+        }
+        if (!hasSamples) { min = 0; max = 1; }
+        if (min === max) { min -= 0.5; max += 0.5; }
+        if (!fixedRange) {
+            const padding = (max - min) * 0.1;
+            min -= padding;
+            max += padding;
+        }
+
+        ctx.save();
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        ctx.clearRect(0, 0, cssW, cssH);
+        this.drawGridRange(ctx, plotX, plotY, plotW, plotH, windowStart, now, min, max);
+
+        const toX = (time: number): number => plotX + ((time - windowStart) / windowMs) * plotW;
+        const toY = (value: number): number => plotY + plotH - ((value - min) / (max - min)) * plotH;
+        series.forEach((item, index) => {
+            ctx.strokeStyle = item.color || this.seriesColor(index);
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            let started = false;
+            let previousY = 0;
+            for (let i = 0; i < item.store.size; i++) {
+                const time = item.store.timeAt(i);
+                if (time < windowStart) { continue; }
+                const value = item.store.valueAt(i) + (item.offset ?? 0);
+                if (!Number.isFinite(value)) { continue; }
+                const x = toX(time);
+                const y = toY(value);
+                if (!started) {
+                    ctx.moveTo(plotX, y);
+                    ctx.lineTo(x, y);
+                    started = true;
+                } else {
+                    ctx.lineTo(x, previousY);
+                    ctx.lineTo(x, y);
+                }
+                previousY = y;
+            }
+            if (started) { ctx.lineTo(plotX + plotW, previousY); }
+            ctx.stroke();
+        });
+
+        ctx.font = '11px sans-serif';
+        let legendX = plotX;
+        for (const [index, item] of series.entries()) {
+            ctx.fillStyle = item.color || this.seriesColor(index);
+            ctx.fillRect(legendX, plotY, 8, 8);
+            ctx.fillText(item.name, legendX + 11, plotY + 8);
+            legendX += Math.max(55, ctx.measureText(item.name).width + 28);
+        }
+        if (!hasSamples) {
+            ctx.fillStyle = this.textColor;
+            ctx.fillText(series.length ? 'Waiting for variable updates...' : 'Select a variable to plot', plotX + 8, plotY + 24);
+        }
+        ctx.restore();
+    }
+
+    protected drawGridRange(ctx: CanvasRenderingContext2D, plotX: number, plotY: number, plotW: number, plotH: number,
+        windowStart: number, now: number, min: number, max: number): void {
+        ctx.strokeStyle = this.gridColor;
+        ctx.fillStyle = this.textColor;
+        ctx.font = '10px sans-serif';
+        for (let i = 0; i <= 4; i++) {
+            const y = plotY + (plotH / 4) * i;
+            ctx.beginPath(); ctx.moveTo(plotX, y); ctx.lineTo(plotX + plotW, y); ctx.stroke();
+            ctx.fillText(this.formatValue(max - ((max - min) / 4) * i), 4, y + 3);
+        }
+        const duration = now - windowStart;
+        for (let i = 0; i <= 5; i++) {
+            const x = plotX + (plotW / 5) * i;
+            ctx.beginPath(); ctx.moveTo(x, plotY); ctx.lineTo(x, plotY + plotH); ctx.stroke();
+            ctx.fillText(this.formatTime(duration - (duration / 5) * i), Math.max(2, x - 14), plotY + plotH + 12);
+        }
+    }
+
+    protected seriesColor(index: number): string {
+        return ['#4EC9B0', '#569CD6', '#DCDCAA', '#CE9178', '#C586C0', '#9CDCFE'][index % 6];
     }
 
     protected drawGrid(

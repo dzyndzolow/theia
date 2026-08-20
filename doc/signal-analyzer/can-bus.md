@@ -33,23 +33,21 @@ Poniżej tabeli działają trzy komponenty:
 Typy wielobajtowe wymagają, by od wskazanego bajtu w ramce było wystarczająco
 dużo danych. Pole pozostaje powiązane z aktualnie wybraną ramką Matrix.
 
-## CAN Value Analyzer — wykres wartości w czasie
+## CAN Value Plot — wykresy zmiennych w czasie
 
-**CAN Value Analyzer** izoluje jedno pole ładunku ramki (np. bajty 4–5 jako
-wartość analogowa) i obrazuje je w czasie. Widżet otwiera się jako osobna
-zakładka obok CAN ID Matrix przyciskiem **Plot Value** (ikona wykresu)
-w pasku narzędzi Matrixa. Prekonfiguruje się automatycznie z:
+**CAN Value Plot** pobiera dane z rejestru **Global Variables**. Widżet otwiera
+się jako osobna zakładka i pozwala dodawać wiele zmiennych do jednego okna.
+Każda zmienna jest osobną serią z własnym buforem próbek, legendą i panelem
+wykresu. Zmienne dodaje się przez wybór na liście **Add plot**, a następnie
+można je niezależnie usuwać.
 
-- zaznaczonego wiersza Matrixa (CAN ID, typ STD/EXT),
-- zaznaczenia w **Frame Payload Inspector** (bajt startowy i długość),
-- ustawień **Typed Field Decoder** (typ, endianowość, dzielnik).
+- wartości i znaczników czasu publikowanych przez `GlobalVariableRegistry`,
+- tylko zmiennych numerycznych (`BOOL`, liczby); teksty i tablice bajtów są pomijane,
+- wspólnej osi czasu oraz automatycznie dobieranego zakresu obejmującego kilka okresów.
 
-Ponieważ wszystkie widżety CAN współdzielą jeden singleton `CanRpcClient`
-(jeden kanał RPC per WebSocket), Value Analyzer subskrybuje to samo zdarzenie
-`onBinaryFrames: Event<ArrayBuffer>` i samodzielnie skanuje partie binarne
-(`extractSamplesFromChunk` w `value-signal-extractor.ts`): walidacja magic +
-CRC32, filtr po ID/typie/interfejsie i ekstrakcja wartości — bez alokacji
-obiektów na ramkę (bufory `Float64Array` w pierścieniu `ValueSampleStore`).
+Zmiany wartości są odbierane przez `GlobalVariableRegistry.onDidVariableChange`.
+Każda seria używa pierścienia `ValueSampleStore`, dzięki czemu wiele wykresów
+może działać równolegle bez tworzenia osobnego widżetu.
 
 Sterowanie w pasku narzędzi widżetu:
 
