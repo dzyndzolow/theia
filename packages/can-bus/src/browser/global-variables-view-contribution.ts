@@ -30,9 +30,7 @@ export class GlobalVariablesViewContribution extends AbstractViewContribution<Gl
             widgetName: GLOBAL_VARIABLES_WIDGET_LABEL,
             defaultWidgetOptions: {
                 area: 'main'
-            },
-            toggleCommandId: GlobalVariableCommands.OPEN_GLOBAL_VARIABLES,
-            toggleCommandLabel: GLOBAL_VARIABLES_WIDGET_LABEL
+            }
         });
     }
 
@@ -40,7 +38,7 @@ export class GlobalVariablesViewContribution extends AbstractViewContribution<Gl
         super.registerCommands(registry);
         registry.registerCommand({
             id: GlobalVariableCommands.OPEN_GLOBAL_VARIABLES,
-            label: 'Open Global Variables Table'
+            label: GLOBAL_VARIABLES_WIDGET_LABEL
         }, {
             execute: () => this.openView({ activate: true, reveal: true })
         });

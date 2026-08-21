@@ -20,7 +20,7 @@ export interface Disposable {
 export class DecoderRegistry implements Disposable {
     private readonly decoders = new Map<string, DecoderProvider>();
     private readonly listeners = new Set<PipelineUpdateListener>();
-    private cachedTopologicalOrder: readonly DecoderProvider[] | null = null;
+    private cachedTopologicalOrder: readonly DecoderProvider[] | undefined;
 
     /**
      * Registers a decoder listener (Observer Pattern).
@@ -70,7 +70,7 @@ export class DecoderRegistry implements Disposable {
      * Returns decoders ordered topologically according to DAG dependencies.
      */
     public getTopologicalOrder(): readonly DecoderProvider[] {
-        if (this.cachedTopologicalOrder === null) {
+        if (this.cachedTopologicalOrder === undefined) {
             this.cachedTopologicalOrder = DecoderDAG.sortTopologically(this.getDecoders());
         }
         return this.cachedTopologicalOrder;
@@ -102,11 +102,11 @@ export class DecoderRegistry implements Disposable {
     public dispose(): void {
         this.listeners.clear();
         this.decoders.clear();
-        this.cachedTopologicalOrder = null;
+        this.cachedTopologicalOrder = undefined;
     }
 
     private invalidateAndNotify(): void {
-        this.cachedTopologicalOrder = null;
+        this.cachedTopologicalOrder = undefined;
         let currentOrder: readonly DecoderProvider[] = [];
         try {
             currentOrder = this.getTopologicalOrder();

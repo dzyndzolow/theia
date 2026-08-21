@@ -64,6 +64,8 @@ export class UartDecoderProvider implements DecoderProvider {
 
                     yield {
                         id: `uart-${startTime}`,
+                        // UART byte annotations are root annotations.
+                        // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
                         parentId: null,
                         level: 0,
                         startTimeNs: startTime,
@@ -99,6 +101,8 @@ export class UartDecoderProvider implements DecoderProvider {
     }
 
     private isSampleWindow(input: unknown): input is SampleWindow {
+        // `null` must be rejected by this runtime type guard.
+        // eslint-disable-next-line no-null/no-null -- object narrowing must reject null
         return typeof input === 'object' && input !== null && 'blocks' in input && Array.isArray((input as SampleWindow).blocks);
     }
 }

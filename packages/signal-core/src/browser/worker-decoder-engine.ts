@@ -26,7 +26,7 @@ export class BackpressureExceededException extends Error {
 }
 
 export class WorkerDecoderEngine implements Disposable {
-    private worker: Worker | null = null;
+    private worker: Worker | undefined;
     private readonly pendingRequests = new Map<string, {
         resolve: (response: WorkerDecodeResponse) => void;
         reject: (error: Error) => void;
@@ -90,7 +90,7 @@ export class WorkerDecoderEngine implements Disposable {
             } else {
                 // Direct synchronous mock handling for headless/Node execution
                 const mockEvent = { data: request } as MessageEvent<WorkerDecodeRequest>;
-                handleWorkerMessage(mockEvent, (responseMsg) => {
+                handleWorkerMessage(mockEvent, responseMsg => {
                     this.onMessageReceived(responseMsg);
                 });
             }
@@ -117,7 +117,7 @@ export class WorkerDecoderEngine implements Disposable {
             } catch (err) {
                 // Ignore cleanup errors
             }
-            this.worker = null;
+            this.worker = undefined;
         }
 
         for (const { reject } of this.pendingRequests.values()) {
@@ -131,7 +131,9 @@ export class WorkerDecoderEngine implements Disposable {
     }
 
     private setupWorkerListeners(): void {
-        if (!this.worker) return;
+        if (!this.worker) {
+            return;
+        }
         this.worker.onmessage = (event: MessageEvent<WorkerDecodeResponse>) => {
             this.onMessageReceived(event.data);
         };

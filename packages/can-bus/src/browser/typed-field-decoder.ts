@@ -52,6 +52,11 @@ export class TypedFieldDecoder {
         return { dispose: () => this.changeListeners.delete(listener) };
     }
 
+    public dispose(): void {
+        this.changeListeners.clear();
+        this.node.replaceChildren();
+    }
+
     constructor() {
         this.node = document.createElement('div');
         this.node.className = 'can-typed-field-decoder';

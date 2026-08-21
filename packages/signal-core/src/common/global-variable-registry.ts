@@ -31,6 +31,17 @@ import {
 export type VariableChangeListener = (event: VariableChangeEvent) => void;
 export type VariableDefinitionChangeListener = (event: VariableDefinitionChangeEvent) => void;
 
+interface SnapshotItem {
+    readonly definition: GlobalVariableDefinitionInput;
+    readonly state?: {
+        readonly value?: unknown;
+        readonly timestampNs?: string | number;
+        readonly clockDomain?: string;
+        readonly source?: string;
+        readonly quality?: VariableQuality;
+    };
+}
+
 /**
  * Validates identifier/symbolic name syntax (e.g., "engine.speed", "sensor_1", "io.digital.in0").
  */
@@ -107,11 +118,15 @@ export class GlobalVariableRegistry implements Disposable {
         const initialTimestamp = typeof process !== 'undefined' && process.hrtime
             ? process.hrtime.bigint()
             : BigInt(Date.now()) * 1000000n;
+        const initialClockDomain = typeof process !== 'undefined' && typeof process.hrtime.bigint === 'function'
+            ? 'process-monotonic'
+            : 'wall-clock';
 
         const initialState: GlobalVariableState = {
             id,
             value: initialVal,
             timestampNs: initialTimestamp,
+            clockDomain: initialClockDomain,
             quality: 'GOOD',
             source: normalizedDefinition.source?.type ?? 'MANUAL',
             version: 1
@@ -280,6 +295,10 @@ export class GlobalVariableRegistry implements Disposable {
             : (typeof process !== 'undefined' && process.hrtime
                 ? process.hrtime.bigint()
                 : BigInt(Date.now()) * 1000000n);
+        const clockDomain = options.clockDomain
+            ?? (options.timestampNs !== undefined
+                ? 'external'
+                : (typeof process !== 'undefined' && typeof process.hrtime.bigint === 'function' ? 'process-monotonic' : 'wall-clock'));
 
         const nextQuality: VariableQuality = options.quality ?? 'GOOD';
         const nextSource = options.source ?? previousState.source;
@@ -289,6 +308,7 @@ export class GlobalVariableRegistry implements Disposable {
             id: definition.id,
             value: validatedValue,
             timestampNs,
+            clockDomain,
             quality: nextQuality,
             source: nextSource,
             version: nextVersion
@@ -386,6 +406,7 @@ export class GlobalVariableRegistry implements Disposable {
             definition: v.definition,
             state: {
                 ...v.state,
+                value: this.serializeValue(v.state.value),
                 timestampNs: v.state.timestampNs.toString()
             }
         }));
@@ -396,15 +417,49 @@ export class GlobalVariableRegistry implements Disposable {
      * Restores complete snapshot.
      */
     public importSnapshot(jsonString: string, options: { overwriteExisting?: boolean } = {}): void {
-        const parsed = JSON.parse(jsonString);
-        if (!Array.isArray(parsed)) {
-            throw new InvalidVariableDefinitionException('Import snapshot JSON must be an array.');
-        }
+        const parsed = this.parseSnapshot(jsonString);
+        this.validateSnapshot(parsed, options);
 
-        for (const item of parsed) {
-            if (!item.definition) {
-                continue;
+        const variablesBackup = new Map(this.variables);
+        const namesBackup = new Map(this.nameToIdMap);
+        const idCounterBackup = this.idCounter;
+        try {
+            this.applySnapshot(parsed, options);
+        } catch (error) {
+            this.variables.clear();
+            for (const [id, variable] of variablesBackup) {
+                this.variables.set(id, variable);
             }
+            this.nameToIdMap.clear();
+            for (const [name, id] of namesBackup) {
+                this.nameToIdMap.set(name, id);
+            }
+            this.idCounter = idCounterBackup;
+            throw error;
+        }
+    }
+
+    private validateSnapshot(parsed: readonly SnapshotItem[], options: { overwriteExisting?: boolean }): void {
+        const validation = new GlobalVariableRegistry();
+        try {
+            for (const variable of this.list()) {
+                validation.define(variable.definition);
+                validation.write(variable.definition.id, this.serializeValue(variable.state.value), {
+                    source: variable.state.source,
+                    quality: variable.state.quality,
+                    timestampNs: variable.state.timestampNs,
+                    clockDomain: variable.state.clockDomain,
+                    force: true
+                });
+            }
+            validation.applySnapshot(parsed, options);
+        } finally {
+            validation.dispose();
+        }
+    }
+
+    private applySnapshot(parsed: readonly SnapshotItem[], options: { overwriteExisting?: boolean }): void {
+        for (const item of parsed) {
             const existing = this.findByName(item.definition.name) || (item.definition.id ? this.get(item.definition.id) : undefined);
             let defId: VariableId;
             if (existing) {
@@ -425,10 +480,57 @@ export class GlobalVariableRegistry implements Disposable {
                     source: item.state.source,
                     quality: item.state.quality,
                     timestampNs: ts,
+                    clockDomain: item.state.clockDomain ?? 'external',
                     force: true
                 });
             }
         }
+    }
+
+    private parseSnapshot(jsonString: string): SnapshotItem[] {
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(jsonString);
+        } catch (error) {
+            throw new InvalidVariableDefinitionException(`Import snapshot is not valid JSON: ${String(error)}`);
+        }
+        if (!Array.isArray(parsed)) {
+            throw new InvalidVariableDefinitionException('Import snapshot JSON must be an array.');
+        }
+
+        return parsed.map((raw, index) => {
+            if (!this.isRecord(raw) || !this.isRecord(raw.definition) || typeof raw.definition.name !== 'string') {
+                throw new InvalidVariableDefinitionException(`Snapshot item ${index} has an invalid definition.`);
+            }
+            if (raw.state !== undefined && !this.isRecord(raw.state)) {
+                throw new InvalidVariableDefinitionException(`Snapshot item ${index} has an invalid state.`);
+            }
+            const state = raw.state as Record<string, unknown> | undefined;
+            if (state?.timestampNs !== undefined && typeof state.timestampNs !== 'string' && typeof state.timestampNs !== 'number') {
+                throw new InvalidVariableDefinitionException(`Snapshot item ${index} has an invalid timestamp.`);
+            }
+            if (state?.clockDomain !== undefined && typeof state.clockDomain !== 'string') {
+                throw new InvalidVariableDefinitionException(`Snapshot item ${index} has an invalid clock domain.`);
+            }
+            return {
+                definition: raw.definition as unknown as GlobalVariableDefinitionInput,
+                state: state as SnapshotItem['state']
+            };
+        });
+    }
+
+    private serializeValue(value: unknown): unknown {
+        if (value instanceof Uint8Array) {
+            return Array.from(value);
+        }
+        if (value instanceof ArrayBuffer) {
+            return Array.from(new Uint8Array(value));
+        }
+        return value;
+    }
+
+    private isRecord(value: unknown): value is Record<string, unknown> {
+        return !!value && typeof value === 'object' && !Array.isArray(value);
     }
 
     public dispose(): void {

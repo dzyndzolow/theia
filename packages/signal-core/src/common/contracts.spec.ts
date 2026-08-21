@@ -54,6 +54,8 @@ describe('SA-102: System Contracts & Branded Types', () => {
 
         const annotation: ProtocolAnnotation = {
             id: 'ann-1',
+            // Root annotations use null by contract.
+            // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
             parentId: null,
             level: 0,
             startTimeNs: BigInt(100),
@@ -81,12 +83,16 @@ describe('SA-102: System Contracts & Branded Types', () => {
             async *decode(input: SampleWindow | AsyncIterable<ProtocolAnnotation>): AsyncIterable<ProtocolAnnotation> {
                 yield {
                     id: 'out-1',
+                    // Root annotations use null by contract.
+                    // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
                     parentId: null,
                     level: 0,
                     startTimeNs: BigInt(0),
                     endTimeNs: BigInt(100),
                     type: 'DUMMY',
                     summary: 'Decoded dummy',
+                    // No decoded payload is intentional for this contract test.
+                    // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
                     payload: null
                 };
             }

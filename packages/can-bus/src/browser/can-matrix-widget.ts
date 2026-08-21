@@ -66,7 +66,6 @@ export class CanMatrixWidget extends BaseWidget {
     @inject(CanVariableBridge)
     protected readonly canVariableBridge!: CanVariableBridge;
 
-
     protected readonly explorer = new MatrixMessageExplorer();
     protected matrixMap = new Map<string, CanMatrixRow>();
     protected isPaused = false;
@@ -133,6 +132,10 @@ export class CanMatrixWidget extends BaseWidget {
         this.toDispose.push(this.interfaceReservation.onDidChange(() => this.updateSourceChoices()));
         this.toDispose.push(this.shell.onDidAddWidget(() => this.updateSourceChoices()));
         this.toDispose.push(this.shell.onDidRemoveWidget(() => this.updateSourceChoices()));
+        this.toDispose.push({ dispose: () => {
+            this.payloadInspector.dispose();
+            this.typedFieldDecoder.dispose();
+        }});
         this.toDispose.push({ dispose: () => this.stopMatrixWorker() });
     }
 

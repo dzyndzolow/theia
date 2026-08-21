@@ -9,8 +9,8 @@
 // *****************************************************************************
 
 /**
-  * Branded types for type-safe IDs across the Signal Analyzer framework.
-  */
+ * Branded types for type-safe IDs across the Signal Analyzer framework.
+ */
 declare const DecoderIdBrand: unique symbol;
 export type DecoderId = string & { readonly [DecoderIdBrand]: true };
 

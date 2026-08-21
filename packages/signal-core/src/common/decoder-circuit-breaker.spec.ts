@@ -19,12 +19,16 @@ describe('SA-203: AnnotationValidator & DecoderCircuitBreaker', () => {
         it('should validate ProtocolAnnotation correctness', () => {
             const valid: ProtocolAnnotation = {
                 id: 'a1',
+                // Root annotations use null by contract.
+                // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
                 parentId: null,
                 level: 0,
                 startTimeNs: BigInt(10),
                 endTimeNs: BigInt(20),
                 type: 'annotation:test',
                 summary: 'Valid',
+                // No decoded payload is intentional for this contract test.
+                // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
                 payload: null
             };
 
@@ -62,8 +66,15 @@ describe('SA-203: AnnotationValidator & DecoderCircuitBreaker', () => {
 
             const res = await cb.execute('dec1', BigInt(0), BigInt(10), async () => [
                 {
-                    id: 'a1', parentId: null, level: 0, startTimeNs: BigInt(0), endTimeNs: BigInt(10),
-                    type: 'test', summary: 'OK', payload: null
+                    id: 'a1',
+                    // Root annotations use null by contract.
+                    // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
+                    parentId: null,
+                    level: 0, startTimeNs: BigInt(0), endTimeNs: BigInt(10),
+                    type: 'test', summary: 'OK',
+                    // No decoded payload is intentional for this contract test.
+                    // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
+                    payload: null
                 }
             ]);
 

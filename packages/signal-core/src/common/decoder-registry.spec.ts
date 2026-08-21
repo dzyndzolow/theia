@@ -9,7 +9,7 @@
 // *****************************************************************************
 
 import { expect } from 'chai';
-import { DecoderProvider, createDecoderId } from './contracts';
+import { DecoderProvider, ProtocolAnnotation, createDecoderId } from './contracts';
 import { DecoderDAG, CyclicDependencyException } from './decoder-dag';
 import { DecoderRegistry } from './decoder-registry';
 
@@ -21,7 +21,7 @@ function mockDecoder(idStr: string, inputType: string, outputType: string): Deco
         inputType,
         outputType,
         channelRoles: [],
-        async *decode() {
+        async *decode(): AsyncIterable<ProtocolAnnotation> {
             // Mock generator
         }
     };

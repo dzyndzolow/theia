@@ -1,8 +1,8 @@
 # Signal Analyzer — Raport superwizora
 
-**Data:** 2026-08-05
-**Zakres:** Wszystkie dokumenty Signal Analyzer (`SIGNAL-ANALYZER-*.md` oraz `doc/signal-analyzer/**/*.md`), `CLAUDE.md` i implementacja `packages/can-bus` po SA-001…SA-006.
-**Wynik:** Kompilacja, lint i 22 testy jednostkowe przechodzą, ale Faza 0 **nie jest gotowa do integracji ani do zamknięcia**. Wykryto braki w rzeczywistej ścieżce frontend↔backend, semantyce transportu binarnego, wydajności renderowania oraz zgodności dokumentacji ze stanem kodu.
+**Ostatnia rewizja:** 2026-08-20
+**Zakres:** Aktualny `master`, `@theia/can-bus`, `@theia/signal-core`, Global Variables, CAN ID Matrix, Frame Payload Inspector, Typed Field Decoder, CAN Value Plot oraz koncepcja narzędzi AI.
+**Wynik:** Koncepcja „Git dla danych CAN” została zaakceptowana. Obecna funkcjonalność przechodzi compile, lint, testy i pełny build Browser; właściciel zamknął bramkę stabilizacyjną statusem `UKOŃCZONE` 2026-08-21.
 
 ---
 
@@ -19,6 +19,94 @@ Nowe wpisy są dopisywane na górze sekcji `## 2. Bieżące ustalenia`, a stare 
 ---
 
 ## 2. Bieżące ustalenia
+
+### 2.0.4. Weryfikacja atomowości i wydajności transportu CAN (2026-08-21)
+
+Usunięto regresję w `CanVariableBridge`: bez bindingów paczki nie są dekodowane,
+a dla aktywnych bindingów CRC32 jest liczone tylko raz. `CanBinaryDecoder`
+waliduje CRC i kompletny układ wszystkich ramek przed wywołaniem pierwszego
+konsumenta, więc wadliwy chunk nie może już częściowo zmienić Global Variables.
+Naprawiono również timestamp przejścia `PAUSED -> STOPPED` w `CaptureSession`.
+
+Weryfikacja: compile i lint obu pakietów OK; `can-bus` 95/95 testów;
+`signal-core` 58/58 testów; test dekodowania 20 000 ramek ma rzeczywisty próg
+50 ms; pełny build `@theia/example-browser` zakończony z 0 błędów;
+`git diff --check` OK. Lokalny pomiar bez instrumentacji coverage: mediana
+walidowanego dekodowania 3,38 ms, a ścieżka bez bindingów 0,0004 ms dla paczki
+20 000 ramek. Decyzją właściciela końcowy status techniczny to `UKOŃCZONE`.
+
+### 2.0. Decyzja superwizora — bramka stabilizacyjna obecnej funkcjonalności (2026-08-20)
+
+**Decyzja funkcjonalna:** `AKCEPTACJA WARUNKOWA`. Aktualna wersja działa stabilnie w dotychczasowych testach i może służyć do dalszych prób manualnych.
+
+**Decyzja jakościowa:** `POPRAWKI WYMAGANE`. Nie nadawać jeszcze statusu `STABLE / ZAAKCEPTOWANE` i nie rozpoczynać SA-301 ani implementacji magazynu sesji AI przed zamknięciem zadań P0/P1.
+
+**Dowody pozytywne:**
+
+- `@theia/can-bus`: compile OK, 82/82 testy przechodzą,
+- `@theia/signal-core`: compile OK, 52/52 testy przechodzą,
+- `@theia/example-browser`: pełny build browser/node, 0 błędów,
+- uruchomiona Theia odpowiada na porcie 3000 kodem HTTP 200.
+
+**Otwarte bramki:**
+
+- lint: 11 błędów w `@theia/can-bus` i 32 w `@theia/signal-core`,
+- brak deklarowanej zależności `@theia/core` w `@theia/signal-core`,
+- niepoprawna maska dla 32-bitowych zakresów w `CanVariableBridge`,
+- niespójne domeny czasu między ramką, registry i CAN Value Plot,
+- brak dedykowanych testów przebudowanego widgetu/rendererów oraz nowych interakcji,
+- eksport mapy nie obejmuje pełnego round-trip powiązań CAN i nie jest atomowy,
+- dokumentacja i `execution.md` opisują częściowo poprzedni wariant CAN Value Analyzer,
+- test wizualny Browser nie został wykonany podczas tej rewizji z powodu braku dostępnego połączenia z przeglądarką.
+
+**Plan obowiązujący:** `doc/signal-analyzer/stabilization-current-functionality.md`, zadania STAB-01…STAB-09.
+
+**Koncepcja AI:** `doc/ai-agent-tools.md` jest zaakceptowanym kierunkiem docelowym. Agent ma korzystać ze wspólnych serwisów i ustrukturyzowanych narzędzi, nie z DOM-u widgetów. Implementacja pozostaje zablokowana do czasu ustabilizowania kontraktu czasu, mapy zmiennych i magazynu próbek.
+
+**Status starszych ustaleń:** sekcje 2.1…2.8 z rewizji 2026-08-05 pozostają historycznym śladem. Usterki oznaczone później jako naprawione w `execution.md` i changelogu są `ZASTĄPIONE` niniejszą rewizją; nie należy ponownie otwierać ich bez nowego dowodu regresji.
+
+### 2.0.1. Punkt kontrolny wdrożenia poprawek jakości (2026-08-20)
+
+> Status tego punktu: `ZASTĄPIONY` przez sekcję 2.0.3 poniżej; zachowano go
+> jako historyczny zapis częściowej weryfikacji.
+
+### 2.0.3. Przekazanie pełnej bramki do oceny (2026-08-20)
+
+Wykonawca wdrożył pozostałe zalecenia STAB-03…STAB-09:
+
+- CaptureSession ma uporządkowane próbki, monotoniczny czas sesyjny, domenę
+  zegara, pauzę bez doliczania czasu i replay zachowujący timestampy;
+- dodano testy DOM Frame Payload Inspector, Typed Field Decoder oraz rendererów
+  wieloseryjnych z offsetem, ręcznym Y i HiDPI;
+- mapa zmiennych jest wersjonowana, walidowana przed importem i atomowa, a
+  powiązania CAN są eksportowane razem z definicjami i stanami;
+- dispose i diagnostyka błędnych chunków zostały pokryte kodem i testami;
+- usunięto jednowidgetową modyfikację API `@theia/core`, zaktualizowano dokumenty
+  i opisano higienę `.pioarduino-core`.
+
+Status wykonawczy: `GOTOWE DO OCENY SUPERVISORA`. Status `STABLE / ZAAKCEPTOWANE`
+pozostaje celowo nieustawiony do czasu niezależnej rewizji supervisora.
+
+Wdrożono pierwszą partię STAB-01 i STAB-02:
+
+- lint `can-bus` i `signal-core` przechodzi w pełnym przebiegu bez cache;
+- `@theia/core` jest zadeklarowane w `@theia/signal-core`, a lockfile jest zsynchronizowany;
+- `CanVariableBridge` dekoduje zakresy 2–32 bitów z użyciem `BigInt`, bez przepełnienia przesunięcia 32-bitowego;
+- dodano test wartości granicznych `UINT32` i `INT32`;
+- `can-bus`: 83 testy przechodzą; `signal-core`: 52 testy przechodzą;
+- compile obu pakietów, build `@theia/example-browser` i `git diff --check` przechodzą.
+
+W tamtym punkcie pozostawały otwarte STAB-03–STAB-09. Ręczna bramka Browsera
+dla bieżącej funkcjonalności została potwierdzona przez użytkownika. Późniejsza
+sekcja 2.0.3 opisuje ich wdrożenie; decyzja `STABLE` nadal należy do supervisora.
+
+### 2.0.2. Potwierdzenie użytkownika i kolejna partia P0 (2026-08-20)
+
+Użytkownik potwierdził stabilność bieżącej funkcjonalności w Browserze. W tej partii zamknięto STAB-02: dekodowanie pól `UINT`/`INT` do 32 bitów używa `BigInt`, obsługuje endianowość, przejście przez granicę bajtu, dzielnik i odrzuca zakres wychodzący poza payload. Rozszerzono testy do 84 przypadków `can-bus`.
+
+Rozpoczęto STAB-03. `GlobalVariableState` ma jawne `clockDomain`, most CAN
+zapisuje timestamp ramki jako `timestampNs`, a `CAN Value Plot` używa czasu
+próbki. Pełne ujednolicenie czasu sesji i replay zostało domknięte w 2.0.3.
 
 ### 2.1. Decyzja superwizora — rewizja integracyjna Fazy 0 (2026-08-05)
 

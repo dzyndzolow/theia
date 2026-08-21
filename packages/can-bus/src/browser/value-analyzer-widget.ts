@@ -1,5 +1,11 @@
 // *****************************************************************************
 // Copyright (C) 2026 EclipseSource and others.
+//
+// This program and the accompanying materials are made available under the
+// terms of the Eclipse Public License v. 2.0 which is available at
+// http://www.eclipse.org/legal/epl-2.0.
+//
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import '../../src/browser/style/can-widget.css';
@@ -29,6 +35,7 @@ interface PlotSeries {
     offset: number;
     lastTime?: number;
     period?: number;
+    clockDomain?: string;
 }
 
 @injectable()
@@ -38,7 +45,6 @@ export class ValueAnalyzerWidget extends BaseWidget {
 
     @inject(GlobalVariableRegistry)
     protected readonly registry!: GlobalVariableRegistry;
-
 
     protected readonly series = new Map<VariableId, PlotSeries>();
     protected isCapturing = false;
@@ -77,11 +83,20 @@ export class ValueAnalyzerWidget extends BaseWidget {
         this.addClass('can-value-analyzer-widget');
         this.buildUI();
         this.refreshVariables();
-        this.toDispose.push(this.registry.onDidVariableChange(event => this.onVariableChange(event.id, event.state.value, event.state.timestampNs)));
+        this.toDispose.push(this.registry.onDidVariableChange(event => this.onVariableChange(
+            event.id,
+            event.state.value,
+            event.state.timestampNs,
+            event.state.clockDomain
+        )));
         this.toDispose.push(this.registry.onDidDefinitionChange(() => this.refreshVariables()));
         this.toDispose.push(Disposable.create(() => {
-            if (this.rafId !== undefined) { cancelAnimationFrame(this.rafId); }
-            if (this.scopeRafId !== undefined) { cancelAnimationFrame(this.scopeRafId); }
+            this.stopScopeLoop();
+            if (this.rafId !== undefined) {
+                cancelAnimationFrame(this.rafId);
+                this.rafId = undefined;
+            }
+            this.series.clear();
         }));
     }
 
@@ -303,20 +318,31 @@ export class ValueAnalyzerWidget extends BaseWidget {
     }
 
     protected clearData(): void {
-        for (const plot of this.series.values()) { plot.store.clear(); plot.lastTime = undefined; plot.period = undefined; }
+        for (const plot of this.series.values()) {
+            plot.store.clear();
+            plot.lastTime = undefined;
+            plot.period = undefined;
+            plot.clockDomain = undefined;
+        }
         this.scheduleRender();
     }
 
-    protected onVariableChange(id: VariableId, rawValue: unknown, _timestampNs: bigint): void {
+    protected onVariableChange(id: VariableId, rawValue: unknown, timestampNs: bigint, clockDomain: string): void {
         if (!this.isCapturing || this.isPaused) { return; }
         const plot = this.series.get(id);
         if (!plot) { return; }
         const value = typeof rawValue === 'boolean' ? (rawValue ? 1 : 0) : Number(rawValue);
         if (!Number.isFinite(value)) { return; }
-        // The registry may carry process-monotonic nanoseconds. For a live
-        // browser oscilloscope, use the reception clock so every series shares
-        // the same moving time base.
-        const t = Date.now();
+        if (plot.clockDomain !== undefined && plot.clockDomain !== clockDomain) {
+            // Never mix incompatible clocks on one time axis. A new source
+            // starts a fresh sweep while preserving the selected variable.
+            plot.store.clear();
+            plot.lastTime = undefined;
+            plot.period = undefined;
+        }
+        plot.clockDomain = clockDomain;
+        const t = Number(timestampNs) / 1_000_000;
+        if (!Number.isFinite(t)) { return; }
         if (plot.lastTime !== undefined && t > plot.lastTime) {
             const period = t - plot.lastTime;
             plot.period = plot.period === undefined ? period : plot.period * 0.7 + period * 0.3;
@@ -364,8 +390,8 @@ export class ValueAnalyzerWidget extends BaseWidget {
             this.dirty = true;
             return;
         }
-        const lastTime = Math.max(...Array.from(this.series.values()).map(plot => plot.lastTime || 0), Date.now());
-        const periods = Array.from(this.series.values()).map(plot => plot.period).filter((period): period is number => period !== undefined);
+        const lastTime = Math.max(...Array.from(this.series.values()).map(plot => plot.lastTime ?? 0), 0);
+        const periods = Array.from(this.series.values()).map(plot => plot.period).filter((candidate): candidate is number => candidate !== undefined);
         const period = periods.length ? Math.min(...periods) : undefined;
         const windowMs = this.autoWindow && period ? Math.min(Math.max(period * 5, VALUE_WINDOW_MIN_MS), VALUE_WINDOW_MAX_MS) : this.windowMs;
         const style = getComputedStyle(this.node);

@@ -21,7 +21,7 @@ import { CanFrame, CanInterfaceConfig } from '../common/can-protocol';
 /** Testable subclass that exposes the protected frame generator. */
 class TestableCanSimulatorAdapter extends CanSimulatorAdapter {
     public testGenerateFrame(slot: number, counter: number, elapsedNs: bigint, elapsedSeconds: number): CanFrame {
-        return (this as any).generateFrameForSlot(slot, counter, elapsedNs, elapsedSeconds);
+        return this.generateFrameForSlot(slot, counter, elapsedNs, elapsedSeconds);
     }
 }
 

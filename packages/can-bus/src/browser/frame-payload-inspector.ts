@@ -156,6 +156,15 @@ export class FramePayloadInspector {
         return { dispose: () => this.bindListeners.delete(listener) };
     }
 
+    public dispose(): void {
+        this.listeners.clear();
+        this.bindListeners.clear();
+        this.byteButtons = [];
+        this.asciiSpans = [];
+        this.bitButtons = [];
+        this.node.replaceChildren();
+    }
+
     /** INT/UINT byte ranges can require an explicit second-click confirmation. */
     public setRangeConfirmationMode(enabled: boolean): void {
         this.rangeConfirmationMode = enabled;

@@ -28,8 +28,8 @@ describe('SA-202: WorkerDecoderEngine & Decode-on-demand', () => {
         const mockWorker = {
             postMessage: () => {}, // Hold responses to keep requests pending
             terminate: () => {},
-            onmessage: null,
-            onerror: null
+            onmessage: undefined,
+            onerror: undefined
         } as unknown as Worker;
 
         const engine = new WorkerDecoderEngine({
@@ -39,8 +39,8 @@ describe('SA-202: WorkerDecoderEngine & Decode-on-demand', () => {
         const buffer = new Uint8Array([1, 2]).buffer;
 
         // Fill up to maxPendingRequests
-        void engine.decodeBlockAsync(buffer, 1000, BigInt(0));
-        void engine.decodeBlockAsync(buffer, 1000, BigInt(0));
+        const firstPending = engine.decodeBlockAsync(buffer, 1000, BigInt(0));
+        const secondPending = engine.decodeBlockAsync(buffer, 1000, BigInt(0));
 
         expect(engine.getPendingCount()).to.equal(2);
 
@@ -53,6 +53,7 @@ describe('SA-202: WorkerDecoderEngine & Decode-on-demand', () => {
         }
 
         engine.dispose();
+        await Promise.allSettled([firstPending, secondPending]);
     });
 
     it('should reject pending requests and prevent Zombie Workers on terminate()', async () => {
@@ -60,8 +61,8 @@ describe('SA-202: WorkerDecoderEngine & Decode-on-demand', () => {
         const mockWorker = {
             postMessage: () => {},
             terminate: () => { terminatedWorker = true; },
-            onmessage: null,
-            onerror: null
+            onmessage: undefined,
+            onerror: undefined
         } as unknown as Worker;
 
         const engine = new WorkerDecoderEngine({
@@ -80,6 +81,7 @@ describe('SA-202: WorkerDecoderEngine & Decode-on-demand', () => {
         } catch (err) {
             expect((err as Error).message).to.include('Worker terminated');
         }
+
     });
 
     it('should report SharedArrayBuffer support status correctly', () => {

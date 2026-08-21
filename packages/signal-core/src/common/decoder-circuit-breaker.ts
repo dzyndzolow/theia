@@ -73,7 +73,7 @@ export class DecoderCircuitBreaker {
                     decoderId,
                     startTimeNs,
                     endTimeNs,
-                    `Circuit breaker is OPEN due to repeated failures.`
+                    'Circuit breaker is OPEN due to repeated failures.'
                 )
             ];
         }

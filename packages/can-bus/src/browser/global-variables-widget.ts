@@ -11,12 +11,13 @@
 import '../../src/browser/style/can-widget.css';
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { BaseWidget, Message } from '@theia/core/lib/browser';
-import { Disposable } from '@theia/core/lib/common';
 import {
     GlobalVariable,
     GlobalVariableRegistry,
     VariableType
 } from '@theia/signal-core';
+import { CanVariableBridge } from './can-variable-bridge';
+import { createGlobalVariableMap, parseGlobalVariableMap } from './variable-map';
 
 export const GLOBAL_VARIABLES_WIDGET_ID = 'global-variables-widget';
 export const GLOBAL_VARIABLES_WIDGET_LABEL = 'Global Variables';
@@ -35,6 +36,9 @@ export class GlobalVariablesWidget extends BaseWidget {
     @inject(GlobalVariableRegistry)
     protected readonly registry!: GlobalVariableRegistry;
 
+    @inject(CanVariableBridge)
+    protected readonly canVariableBridge!: CanVariableBridge;
+
     protected toolbar!: HTMLElement;
     protected searchInput!: HTMLInputElement;
     protected addDialog!: HTMLElement;
@@ -51,7 +55,6 @@ export class GlobalVariablesWidget extends BaseWidget {
         versionCell: HTMLTableCellElement;
     }>();
 
-    protected disposables: Disposable[] = [];
     protected filterQuery = '';
     protected renderScheduled = false;
 
@@ -68,19 +71,13 @@ export class GlobalVariablesWidget extends BaseWidget {
 
         this.buildLayout();
 
-        this.disposables.push(
-            this.registry.onDidDefinitionChange(() => this.scheduleFullRender()),
-            this.registry.onDidVariableChange(event => this.updateVariableRow(event.id))
-        );
+        this.toDispose.push(this.registry.onDidDefinitionChange(() => this.scheduleFullRender()));
+        this.toDispose.push(this.registry.onDidVariableChange(event => this.updateVariableRow(event.id)));
 
         this.renderTable();
     }
 
     public override dispose(): void {
-        for (const d of this.disposables) {
-            d.dispose();
-        }
-        this.disposables = [];
         this.rowElements.clear();
         super.dispose();
     }
@@ -473,7 +470,7 @@ export class GlobalVariablesWidget extends BaseWidget {
     }
 
     protected handleExport(): void {
-        const json = this.registry.exportSnapshot();
+        const json = JSON.stringify(createGlobalVariableMap(this.registry, this.canVariableBridge.getBindings()), undefined, 2);
         const blob = new Blob([json], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -494,7 +491,25 @@ export class GlobalVariablesWidget extends BaseWidget {
                 reader.onload = () => {
                     try {
                         const content = String(reader.result);
-                        this.registry.importSnapshot(content, { overwriteExisting: true });
+                        const map = parseGlobalVariableMap(content);
+                        const additionalVariableIds = new Set<string>();
+                        for (const item of map.variables) {
+                            if (isRecord(item) && isRecord(item.definition) && typeof item.definition.id === 'string') {
+                                additionalVariableIds.add(item.definition.id);
+                            }
+                        }
+                        this.canVariableBridge.validateBindings(map.canBindings, additionalVariableIds);
+
+                        const previousSnapshot = this.registry.exportSnapshot();
+                        const previousBindings = this.canVariableBridge.getBindings();
+                        try {
+                            this.registry.importSnapshot(JSON.stringify(map.variables), { overwriteExisting: true });
+                            this.canVariableBridge.replaceBindings(map.canBindings);
+                        } catch (error) {
+                            this.registry.importSnapshot(previousSnapshot, { overwriteExisting: true });
+                            this.canVariableBridge.replaceBindings(previousBindings);
+                            throw error;
+                        }
                         this.renderTable();
                     } catch (err: unknown) {
                         alert('Import failed: ' + (err as Error).message);
@@ -535,4 +550,8 @@ export class GlobalVariablesWidget extends BaseWidget {
     protected escapeCsv(value: string): string {
         return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
     }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
 }

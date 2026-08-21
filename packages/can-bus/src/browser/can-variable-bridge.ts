@@ -9,7 +9,7 @@
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
-import { Disposable } from '@theia/core/lib/common';
+import { Disposable, Emitter, Event } from '@theia/core/lib/common';
 import { GlobalVariableRegistry, VariableId } from '@theia/signal-core';
 import { CanRpcClient } from './can-rpc-client';
 import { CanBinaryDecoder, CanFrame } from '../common/can-protocol';
@@ -25,11 +25,16 @@ export interface CanVariableBinding {
     readonly startByte: number;
     readonly byteLength: number;
     readonly startBit?: number; // 0..7
-    readonly bitLength?: number; // 1..64
+    readonly bitLength?: number; // 1..32 for numeric bit fields
     readonly isBit?: boolean;
     readonly type: CanBindingFieldType;
     readonly littleEndian: boolean;
     readonly divisor: number;
+}
+
+export interface CanVariableBridgeDiagnostics {
+    readonly malformedChunkCount: number;
+    readonly lastError?: string;
 }
 
 /**
@@ -48,7 +53,12 @@ export class CanVariableBridge implements Disposable {
     protected readonly bindings = new Map<string, CanVariableBinding>();
     protected readonly canIdToBindings = new Map<number, Set<CanVariableBinding>>();
     protected readonly disposables: Disposable[] = [];
+    protected readonly errorEmitter = new Emitter<Error>();
+    protected malformedChunkCount = 0;
+    protected lastError: string | undefined;
     private bindingCounter = 0;
+
+    public readonly onDidError: Event<Error> = this.errorEmitter.event;
 
     @postConstruct()
     protected init(): void {
@@ -64,6 +74,7 @@ export class CanVariableBridge implements Disposable {
         this.disposables.length = 0;
         this.bindings.clear();
         this.canIdToBindings.clear();
+        this.errorEmitter.dispose();
     }
 
     /**
@@ -79,6 +90,8 @@ export class CanVariableBridge implements Disposable {
             bitLength: bindingInput.bitLength !== undefined ? bindingInput.bitLength : 1,
             isBit: bindingInput.isBit || bindingInput.type === 'BIT' || bindingInput.type === 'BOOL'
         };
+
+        this.validateBindings([binding]);
 
         this.bindings.set(id, binding);
 
@@ -126,6 +139,65 @@ export class CanVariableBridge implements Disposable {
         return set ? Array.from(set) : [];
     }
 
+    public getDiagnostics(): CanVariableBridgeDiagnostics {
+        return {
+            malformedChunkCount: this.malformedChunkCount,
+            lastError: this.lastError
+        };
+    }
+
+    /** Validates every binding before a map import mutates the bridge. */
+    public validateBindings(
+        bindings: readonly CanVariableBinding[],
+        additionalVariableIds: ReadonlySet<string> = new Set()
+    ): void {
+        const validTypes: readonly CanBindingFieldType[] = [
+            'BIT', 'BOOL', 'UINT', 'INT', 'UINT8', 'INT8', 'UINT16', 'INT16',
+            'UINT32', 'INT32', 'FLOAT32', 'FLOAT64', 'ASCII'
+        ];
+        for (const [index, binding] of bindings.entries()) {
+            if (!binding || typeof binding !== 'object') {
+                throw new Error(`CAN binding ${index} is not an object.`);
+            }
+            if (!this.registry.get(binding.variableId) && !additionalVariableIds.has(String(binding.variableId))) {
+                throw new Error(`CAN binding ${index} references unknown variable '${String(binding.variableId)}'.`);
+            }
+            if (!Number.isInteger(binding.canId) || binding.canId < 0 || binding.canId > 0x1FFFFFFF) {
+                throw new Error(`CAN binding ${index} has an invalid CAN ID.`);
+            }
+            if (typeof binding.extended !== 'boolean' || typeof binding.littleEndian !== 'boolean') {
+                throw new Error(`CAN binding ${index} has invalid boolean flags.`);
+            }
+            if (!Number.isInteger(binding.startByte) || binding.startByte < 0) {
+                throw new Error(`CAN binding ${index} has an invalid start byte.`);
+            }
+            if (!Number.isInteger(binding.byteLength) || binding.byteLength < 1 || binding.byteLength > 64) {
+                throw new Error(`CAN binding ${index} has an invalid byte length.`);
+            }
+            if (binding.startBit !== undefined && (!Number.isInteger(binding.startBit) || binding.startBit < 0 || binding.startBit > 7)) {
+                throw new Error(`CAN binding ${index} has an invalid start bit.`);
+            }
+            if (binding.bitLength !== undefined && (!Number.isInteger(binding.bitLength) || binding.bitLength < 1 || binding.bitLength > 32)) {
+                throw new Error(`CAN binding ${index} has an invalid bit length.`);
+            }
+            if (!validTypes.includes(binding.type) || !Number.isFinite(binding.divisor) || binding.divisor <= 0) {
+                throw new Error(`CAN binding ${index} has an invalid type or divisor.`);
+            }
+        }
+    }
+
+    /** Replaces all bindings after the complete incoming map has been validated. */
+    public replaceBindings(bindings: readonly CanVariableBinding[]): void {
+        this.validateBindings(bindings);
+        this.bindings.clear();
+        this.canIdToBindings.clear();
+        this.bindingCounter = 0;
+        for (const binding of bindings) {
+            const { id: _ignoredId, ...input } = binding;
+            this.addBinding(input);
+        }
+    }
+
     /**
      * Processes incoming binary chunk of CAN frames.
      */
@@ -135,9 +207,15 @@ export class CanVariableBridge implements Disposable {
         }
 
         try {
-            CanBinaryDecoder.decodeBatch(chunk, frame => this.processFrame(frame));
-        } catch {
-            // Ignore malformed chunk
+            const result = CanBinaryDecoder.decodeBatchDetailed(chunk, frame => this.processFrame(frame));
+            if (!result.valid) {
+                throw new Error(result.error ?? `CAN binary chunk decoded ${result.decodedCount} of ${result.advertisedCount} advertised frames.`);
+            }
+        } catch (error) {
+            const failure = error instanceof Error ? error : new Error(String(error));
+            this.malformedChunkCount++;
+            this.lastError = failure.message;
+            this.errorEmitter.fire(failure);
         }
     }
 
@@ -169,7 +247,7 @@ export class CanVariableBridge implements Disposable {
         const { startByte, byteLength, startBit, bitLength, isBit, type, littleEndian, divisor, variableId } = binding;
         const data = frame.data;
 
-        if (startByte >= data.length) {
+        if (!Number.isInteger(startByte) || startByte < 0 || startByte >= data.length) {
             return;
         }
 
@@ -181,21 +259,16 @@ export class CanVariableBridge implements Disposable {
             const bit = (byteVal >> (startBit ?? 0)) & 1;
             extractedValue = bit === 1;
         } else if (startBit !== undefined && bitLength !== undefined && bitLength > 1 && bitLength <= 32) {
-            // Multi-bit field extraction within 1-4 bytes
-            let rawBits = 0;
-            const endByte = Math.min(data.length, startByte + Math.ceil((startBit + bitLength) / 8));
-            for (let i = startByte; i < endByte; i++) {
-                const shift = (i - startByte) * 8;
-                rawBits |= (data[i] << shift);
+            const numericValue = this.decodeBitField(data, startByte, startBit, bitLength, type === 'INT', littleEndian);
+            if (numericValue === undefined) {
+                return;
             }
-            const mask = (1 << bitLength) - 1;
-            let val = (rawBits >> startBit) & mask;
-            if (type === 'INT' && (val & (1 << (bitLength - 1)))) {
-                val -= (1 << bitLength);
-            }
-            extractedValue = divisor !== 1 && divisor > 0 ? val / divisor : val;
+            extractedValue = divisor !== 1 && divisor > 0 ? numericValue / divisor : numericValue;
         } else {
             // Standard byte-level decoding
+            if (!Number.isInteger(byteLength) || byteLength < 1 || startByte + byteLength > data.length) {
+                return;
+            }
             const actualLength = Math.min(byteLength, data.length - startByte);
             const slice = new Uint8Array(data.slice(startByte, startByte + actualLength));
 
@@ -219,6 +292,8 @@ export class CanVariableBridge implements Disposable {
             try {
                 this.registry.write(variableId, extractedValue, {
                     source: sourceLabel,
+                    timestampNs: BigInt(Math.max(0, Math.floor(frame.timestamp * 1_000_000))),
+                    clockDomain: 'can-capture',
                     quality: 'GOOD',
                     force: true
                 });
@@ -227,6 +302,46 @@ export class CanVariableBridge implements Disposable {
                 console.warn(`[CanVariableBridge] Failed to write variable ${variableId}:`, err);
             }
         }
+    }
+
+    /**
+     * Extracts a signed or unsigned bit field without JavaScript 32-bit shift
+     * coercion. For little endian, bit zero is the least significant bit of
+     * the first byte. For big endian, the selected field is read from the most
+     * significant side of the selected byte range.
+     */
+    protected decodeBitField(
+        data: readonly number[],
+        startByte: number,
+        startBit: number,
+        bitLength: number,
+        signed: boolean,
+        littleEndian: boolean
+    ): number | undefined {
+        if (!Number.isInteger(startBit) || startBit < 0 || startBit > 7 || !Number.isInteger(bitLength) || bitLength < 1 || bitLength > 32) {
+            return undefined;
+        }
+        const byteCount = Math.ceil((startBit + bitLength) / 8);
+        const endByte = startByte + byteCount;
+        if (endByte > data.length) {
+            return undefined;
+        }
+
+        let raw = 0n;
+        for (let i = startByte; i < endByte; i++) {
+            const byte = BigInt(data[i] & 0xFF);
+            raw = littleEndian
+                ? raw | (byte << BigInt((i - startByte) * 8))
+                : (raw << 8n) | byte;
+        }
+
+        const shift = littleEndian ? startBit : byteCount * 8 - startBit - bitLength;
+        const mask = (1n << BigInt(bitLength)) - 1n;
+        let value = (raw >> BigInt(shift)) & mask;
+        if (signed && (value & (1n << BigInt(bitLength - 1))) !== 0n) {
+            value -= 1n << BigInt(bitLength);
+        }
+        return Number(value);
     }
 
     protected decodeNumeric(bytes: Uint8Array, type: string, littleEndian: boolean): number | bigint | undefined {

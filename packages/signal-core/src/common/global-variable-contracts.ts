@@ -99,6 +99,8 @@ export interface GlobalVariableState {
     readonly id: VariableId;
     readonly value: unknown;
     readonly timestampNs: bigint;
+    /** Clock domain that gives meaning to timestampNs (for example CAN capture or process monotonic). */
+    readonly clockDomain: string;
     readonly quality: VariableQuality;
     readonly source?: string;
     readonly version: number;
@@ -137,6 +139,7 @@ export interface VariableDefinitionChangeEvent {
 export interface VariableWriteOptions {
     readonly source?: string;
     readonly timestampNs?: bigint;
+    readonly clockDomain?: string;
     readonly quality?: VariableQuality;
     readonly force?: boolean;
 }

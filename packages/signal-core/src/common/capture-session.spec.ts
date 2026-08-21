@@ -43,7 +43,7 @@ describe('SA-104: CaptureSession State Machine & SignalChannel', () => {
             session.dispose();
         });
 
-        it('should follow legal state transitions: STOPPED -> CAPTURING -> PAUSED -> CAPTURING -> STOPPED', (done) => {
+        it('should follow legal state transitions: STOPPED -> CAPTURING -> PAUSED -> CAPTURING -> STOPPED', done => {
             expect(session.state).to.equal('STOPPED');
 
             let eventCount = 0;
@@ -101,6 +101,57 @@ describe('SA-104: CaptureSession State Machine & SignalChannel', () => {
             expect(removed).to.be.true;
             expect(session.getChannels()).to.have.lengthOf(1);
             expect(session.getChannel('ch1')).to.be.undefined;
+        });
+
+        it('should assign ordered session timestamps and keep replay timestamps unchanged', () => {
+            session.start();
+            const first = session.recordSample('ch1', 10);
+            const second = session.recordSample('ch1', 11);
+
+            expect(first.sequence).to.equal(0);
+            expect(second.sequence).to.equal(1);
+            expect(second.timestampNs >= first.timestampNs).to.be.true;
+            expect(first.clockDomain).to.equal('session-monotonic');
+
+            const replayed: bigint[] = [];
+            session.replay([
+                { ...first, timestampNs: 100n },
+                { ...second, timestampNs: 250n }
+            ], sample => replayed.push(sample.timestampNs));
+            expect(replayed).to.deep.equal([100n, 250n]);
+        });
+
+        it('should exclude paused wall time from subsequent session timestamps', () => {
+            session.start();
+            const first = session.recordSample('ch1', 1);
+            session.pause();
+            expect(() => session.recordSample('ch1', 2)).to.throw(InvalidStateException);
+            session.resume();
+            const second = session.recordSample('ch1', 2);
+            expect(second.timestampNs >= first.timestampNs).to.be.true;
+        });
+
+        it('should exclude paused wall time when stopping directly from pause', done => {
+            let now = 100n;
+            const sessionWithClock = session as unknown as { monotonicNowNs: () => bigint };
+            sessionWithClock.monotonicNowNs = () => now;
+            session.onStateChanged(event => {
+                if (event.currentState !== 'STOPPED') {
+                    return;
+                }
+                try {
+                    expect(event.timestampNs).to.equal(50n);
+                    done();
+                } catch (error) {
+                    done(error);
+                }
+            });
+
+            session.start();
+            now = 150n;
+            session.pause();
+            now = 1_000n;
+            session.stop();
         });
     });
 });

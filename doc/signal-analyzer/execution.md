@@ -37,19 +37,25 @@ Ten dokument jest zywym rejestrem wykonania. Uzupelnia `SIGNAL-ANALYZER-ROADMAP.
 | SA-205 | ZAAKCEPTOWANE | Implementacja `UartDecoderProvider` w `@theia/signal-core` z opcjami baudrate/parity/stopBits i weryfikacją błędów framingu. (34/34 testy passing, 95.09% coverage). | Zadanie zamknięte. |
 | SA-206 | ZAAKCEPTOWANE | Stworzenie dokumentacji technicznej Fazy 2 `decoders-architecture.md` opisującej algorytm Kahna, cykl życia WebWorkera, zero-copy, Circuit Breaker i dekodery CAN/UART z diagramami Mermaid. | Koniec Fazy 2. Faza 3 (SA-301+) gotowa do realizacji. |
 | CAN-FIX | ZAAKCEPTOWANE | Naprawa błędu `stopCapture` dla nieprzypisanych widżetów oraz dodanie rozwijanego menu `Source:` w `CanMatrixWidget` pozwalającego wybierać dane z dowolnego otwartego `CAN Bus Analyzer`. (37/37 testy passing). | Gotowe do Fazy 3 (SA-301). |
-| CAN-PLOT | GOTOWE DO REWIZJI | Widżet **CAN Value Analyzer** w `@theia/can-bus`: izolacja pola ładunku (np. bajty 4–5) ramki o danym CAN ID i wykres wartości w czasie. Otwierany przyciskiem **Plot Value** w CAN ID Matrix, prekonfigurowany z wiersza Matrixa + Payload Inspector + Typed Field Decoder. Podstawa czasu 1 ms–1 s oraz tryb auto (5 × estymowany okres). Zero-allocation: pierścień `Float64Array`, parsowanie koperty binarnej bez obiektów ramek. (76/76 testy passing, 26 nowych). | Oczekuje na rewizję supervisora; potem Faza 3 (SA-301). |
+| CAN-PLOT | UKOŃCZONE | Widżet **CAN Value Plot** pobiera dane z Global Variables i rysuje wiele serii na jednym wykresie z offsetem, Auto window, podstawą 250 ms i Auto scale Y. Testy obejmują DOM zakresu, dekoder i renderer wieloseryjny. | Zadanie ukończone. |
 
-| GLOBAL-VARS | ZAAKCEPTOWANE | Centralny rejestr globalnych zmiennych w stylu PLC: kontrakty, rejestr `GlobalVariableRegistry` z walidacją 11 typów, wersjonowaniem, snapshotami JSON oraz widżet `GlobalVariablesWidget` z edytowalną tabelą i importem/eksportem. (52/52 testy signal-core, 79/79 testy can-bus passing). | Zadanie zakończone. |
+| GLOBAL-VARS | ZAAKCEPTOWANE | Centralny rejestr globalnych zmiennych w stylu PLC: kontrakty, rejestr `GlobalVariableRegistry` z walidacją 11 typów, wersjonowaniem, snapshotami JSON oraz widżet `GlobalVariablesWidget` z edytowalną tabelą i importem/eksportem. (58/58 testy signal-core, 95/95 testy can-bus passing). | Zadanie zakończone. |
+| STABLE-BASE | UKOŃCZONE | Wdrożono STAB-01…STAB-09: lint, zakresy 32-bit, kontrakt czasu sesji/replay, testy UI/rendererów, atomową mapę zmiennych, lifecycle, granicę upstream, dokumentację i higienę runtime. | Bramka techniczna zamknięta decyzją właściciela 2026-08-21. |
 
 ## Kolejnosc pracy teraz
 
 1. Faza 0 (`@theia/can-bus`, SA-001..SA-008), Faza 1 (`@theia/signal-core`, SA-101..SA-106) oraz Faza 2 (SA-201..SA-206) zostały w pełni ukończone, przetestowane i udokumentowane.
 2. Naprawiono usterkę niepoprawnego wywoływania stopCapture oraz zaimplementowano dynamiczny wybór źródła analizatora w widżecie CAN ID Matrix.
-3. Dodano widżet CAN Value Analyzer (rekord CAN-PLOT, GOTOWE DO REWIZJI) — wykres wartości pojedynczego pola ramki w czasie, otwierany z CAN ID Matrix.
-4. Następne zadanie: Faza 3 — SA-301 (`@theia/signal-ui` i `ViewportController`), po akceptacji CAN-PLOT.
-5. Pełny plan i dowody są w `supervisor-report.md`; nie zastępuj go streszczeniami w rekordach zadań.
+3. CAN Value Plot został przebudowany na źródło Global Variables i wiele serii na jednym wykresie; poprawki jakościowe STAB-01…STAB-09 są wdrożone.
+4. Stabilizacja obecnej funkcjonalności została zamknięta statusem `UKOŃCZONE` decyzją właściciela 2026-08-21.
+5. Faza 3 — SA-301 (`@theia/signal-ui` i `ViewportController`) oraz implementacja magazynu sesji AI mogą korzystać z zamkniętej bazy stabilizacyjnej.
+6. Pełny plan i dowody są w `supervisor-report.md`; nie zastępuj go streszczeniami w rekordach zadań.
 
 ## Rekomendacja dla kolejnego modelu
+
+**AKTUALNA — 2026-08-20:** rozpocznij od STAB-01, a następnie realizuj kolejność z `stabilization-current-functionality.md`. Nie dodawaj nowych funkcji AI, CAN Session Diff ani Fazy 3 przed przejściem compile + lint + test + build + manual Browser gate.
+
+### Rekomendacja historyczna — ZASTĄPIONA 2026-08-20
 
 Rozpocznij od **SA-002**, nie od SA-003 ani od przebudowy SA-001.
 

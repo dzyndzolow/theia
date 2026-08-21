@@ -37,6 +37,8 @@ import { ProtocolAnnotation } from '@theia/signal-core';
 export function canFrameToAnnotation(frame: CanFrame): ProtocolAnnotation {
     return {
         id: `can-${frame.interface}-${frame.id}-${frame.timestamp}`,
+        // CAN frames are root annotations.
+        // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
         parentId: null,
         level: 0,
         startTimeNs: BigInt(Math.floor(frame.timestamp * 1000000)),
@@ -132,6 +134,13 @@ export interface CanRpc {
 }
 
 export const CAN_BINARY_MAGIC = 0x43414E30;
+
+export interface CanBinaryDecodeResult {
+    readonly decodedCount: number;
+    readonly advertisedCount: number;
+    readonly valid: boolean;
+    readonly error?: string;
+}
 
 // IEEE 802.3 CRC32 lookup table
 const CRC32_TABLE = new Uint32Array(256);
@@ -248,25 +257,42 @@ export class CanBinaryEncoder {
 
 export class CanBinaryDecoder {
     static decodeBatch(buffer: ArrayBuffer | Uint8Array, onFrame: (frame: CanFrame) => void): number {
+        return this.decodeBatchDetailed(buffer, onFrame).decodedCount;
+    }
+
+    /**
+     * Validates the complete envelope before emitting the first frame. This
+     * keeps consumers from applying a valid prefix of a malformed batch and
+     * exposes diagnostics without forcing them to calculate CRC32 again.
+     */
+    static decodeBatchDetailed(buffer: ArrayBuffer | Uint8Array, onFrame: (frame: CanFrame) => void): CanBinaryDecodeResult {
         const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-        if (bytes.byteLength < 12) { return 0; }
+        if (bytes.byteLength < 12) {
+            return this.invalidResult('CAN binary chunk is shorter than its header.');
+        }
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
         const magic = view.getUint32(0, true);
-        if (magic !== CAN_BINARY_MAGIC) { return 0; }
+        if (magic !== CAN_BINARY_MAGIC) {
+            return this.invalidResult('CAN binary chunk has an invalid magic header.');
+        }
 
         const count = view.getUint32(4, true);
         const expectedCrc = view.getUint32(8, true);
 
         const actualCrc = computeCrc32(bytes, 12, bytes.byteLength - 12);
-        if (expectedCrc !== actualCrc) { return 0; }
+        if (expectedCrc !== actualCrc) {
+            return this.invalidResult('CAN binary chunk has an invalid CRC32.', count);
+        }
+
+        const structuralError = this.validateFrameLayout(view, bytes.byteLength, count);
+        if (structuralError) {
+            return this.invalidResult(structuralError, count);
+        }
 
         let offset = 12;
-        let actualDecoded = 0;
 
         for (let i = 0; i < count; i++) {
-            if (offset + 14 > bytes.byteLength) { break; }
-
             const timestamp = view.getFloat64(offset, true);
             offset += 8;
 
@@ -282,8 +308,6 @@ export class CanBinaryDecoder {
 
             const ifaceLen = view.getUint8(offset);
             offset += 1;
-
-            if (offset + ifaceLen + dlc > bytes.byteLength) { break; }
 
             const ifaceStr = getDecodedIface(bytes, offset, ifaceLen);
             offset += ifaceLen;
@@ -303,10 +327,42 @@ export class CanBinaryDecoder {
                 timestamp,
                 interface: ifaceStr
             });
-            actualDecoded++;
         }
 
-        return actualDecoded;
+        return {
+            decodedCount: count,
+            advertisedCount: count,
+            valid: true
+        };
+    }
+
+    private static validateFrameLayout(view: DataView, byteLength: number, count: number): string | undefined {
+        let offset = 12;
+        for (let i = 0; i < count; i++) {
+            if (offset + 14 > byteLength) {
+                return `CAN binary chunk ends before frame ${i + 1} of ${count}.`;
+            }
+            const dlc = view.getUint8(offset + 12);
+            const ifaceLen = view.getUint8(offset + 13);
+            offset += 14;
+            if (offset + ifaceLen + dlc > byteLength) {
+                return `CAN binary chunk has a truncated payload in frame ${i + 1} of ${count}.`;
+            }
+            offset += ifaceLen + dlc;
+        }
+        if (offset !== byteLength) {
+            return `CAN binary chunk has ${byteLength - offset} trailing payload bytes.`;
+        }
+        return undefined;
+    }
+
+    private static invalidResult(error: string, advertisedCount = 0): CanBinaryDecodeResult {
+        return {
+            decodedCount: 0,
+            advertisedCount,
+            valid: false,
+            error
+        };
     }
 }
 

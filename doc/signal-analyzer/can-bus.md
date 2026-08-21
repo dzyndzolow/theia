@@ -36,14 +36,16 @@ dużo danych. Pole pozostaje powiązane z aktualnie wybraną ramką Matrix.
 ## CAN Value Plot — wykresy zmiennych w czasie
 
 **CAN Value Plot** pobiera dane z rejestru **Global Variables**. Widżet otwiera
-się jako osobna zakładka i pozwala dodawać wiele zmiennych do jednego okna.
+się jako osobna zakładka, automatycznie dodaje pierwszą zmienną numeryczną i
+pozwala dodawać wiele zmiennych do jednego okna.
 Każda zmienna jest osobną serią z własnym buforem próbek, legendą i panelem
 wykresu. Zmienne dodaje się przez wybór na liście **Add plot**, a następnie
 można je niezależnie usuwać.
 
 - wartości i znaczników czasu publikowanych przez `GlobalVariableRegistry`,
 - tylko zmiennych numerycznych (`BOOL`, liczby); teksty i tablice bajtów są pomijane,
-- wspólnej osi czasu oraz automatycznie dobieranego zakresu obejmującego kilka okresów.
+- wspólnej osi czasu oraz automatycznie dobieranego zakresu obejmującego kilka okresów,
+- timestampu próbki i jawnej domeny zegara; nie używa czasu odbioru UI jako zamiennika.
 
 Zmiany wartości są odbierane przez `GlobalVariableRegistry.onDidVariableChange`.
 Każda seria używa pierścienia `ValueSampleStore`, dzięki czemu wiele wykresów
@@ -58,8 +60,10 @@ Sterowanie w pasku narzędzi widżetu:
 | **Interface** | wybór z listy interfejsów otwartych analizatorów (`All` = bez filtra) |
 | **Byte / Len** | bajt startowy i długość pola (1–8) |
 | **Type / Endian / Divisor** | typ dekodowania (`UINT`/`INT` o dowolnej długości 1–8 bajtów, typy stałe `UINT8`…`FLOAT64`), endianowość i dzielnik wyniku |
-| **Auto window** | okno czasowe = 5 × estymowany okres sygnału (estymacja EMA z odstępów próbek), zawsze w zakresie 1 ms–1 s |
-| **Window** | ręczna podstawa czasu: 1, 2, 5, 10, 20, 50, 100, 250, 500, 1000 ms |
+| **Auto window** | domyślnie włączone; okno = 5 × estymowany okres sygnału, z fallbackiem 250 ms |
+| **Window** | ręczna podstawa czasu: 1, 2, 5, 10, 20, 50, 100, 250, 500, 1000, 10000, 100000 ms |
+| **Offset** | niezależne przesunięcie każdej serii w jednostkach wartości |
+| **Auto scale Y / Y min / Y max** | dynamiczne skalowanie osi albo jawny zakres wspólny dla wszystkich serii |
 
 Wykres rysuje sygnał schodkowy (zero-order hold) na kanwie z obsługą
 wysokiego DPI i kolorami motywu Theia; oś X to czas względny do „now",
@@ -157,7 +161,8 @@ Renderowanie wykresów obciążenia magistrali (`Bus Load`) i klatkażu (`FPS`) 
 
 ### Uruchomienie Testów Jednostkowych i Benchmarku
 
-Wszystkie 23 testy jednostkowe wraz z przetestowaniem odporności sumy kontrolnej CRC32 i wydajności transportu binarnego wykonuje się poleceniem:
+Testy pakietu wraz z odpornością sumy kontrolnej CRC32, dekoderem, wyborem
+zakresu, mapą zmiennych i rendererem wykonuje się poleceniem:
 
 ```bash
 npx lerna run test --scope @theia/can-bus

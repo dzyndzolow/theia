@@ -17,8 +17,22 @@
 import { expect } from 'chai';
 import { CanRpcServiceImpl } from './can-rpc-service';
 import { CanSocketServiceImpl, ICanSocketService } from './can-socket-service';
-import { CanFrame, CanInterfaceConfig, CanStatistics, CanBinaryDecoder } from '../common/can-protocol';
+import { CanFrame, CanInterfaceConfig, CanStatistics, CanBinaryDecoder, CanRpcClient } from '../common/can-protocol';
 import { Emitter } from '@theia/core/lib/common';
+
+class TestableCanRpcService extends CanRpcServiceImpl {
+    public hasClient(client: CanRpcClient): boolean {
+        return this.clients.has(client);
+    }
+
+    public get activeInterfaceCount(): number {
+        return this.activeInterfaces.size;
+    }
+
+    public get clientCount(): number {
+        return this.clients.size;
+    }
+}
 
 describe('CanRpcServiceImpl', () => {
     let mockSocket: ICanSocketService;
@@ -75,7 +89,7 @@ describe('CanRpcServiceImpl', () => {
     });
 
     it('does not stop other clients when one client disconnects', () => {
-        const service = new CanRpcServiceImpl(mockSocket);
+        const service = new TestableCanRpcService(mockSocket);
         let firstClosed = false;
 
         const firstClient = { onDidCloseConnection: () => { firstClosed = true; } };
@@ -90,19 +104,19 @@ describe('CanRpcServiceImpl', () => {
         }
 
         // Second client should still be registered
-        expect((service as any).clients.has(secondClient)).to.be.true;
-        expect((service as any).clients.has(firstClient)).to.be.false;
+        expect(service.hasClient(secondClient)).to.be.true;
+        expect(service.hasClient(firstClient)).to.be.false;
         expect(firstClosed).to.be.true;
     });
 
     it('clears all clients and interfaces on full dispose', () => {
-        const service = new CanRpcServiceImpl(mockSocket);
+        const service = new TestableCanRpcService(mockSocket);
         service.setClient({});
         service.setClient({});
         service.startCapture({ name: 'demo', bitrate: 100 });
         service.dispose();
-        expect((service as any).clients.size).to.equal(0);
-        expect((service as any).activeInterfaces.size).to.equal(0);
+        expect(service.clientCount).to.equal(0);
+        expect(service.activeInterfaceCount).to.equal(0);
     });
 
     it('flushes binary chunks to client onBinaryFrames callback', async () => {

@@ -29,6 +29,10 @@ gh-pages
 dev-packages/electron/compile_commands.json
 *.tsbuildinfo
 .eslintcache
+
+# Local PlatformIO/Theia runtime state. Keep tracked legacy seed files intact,
+# but do not add new HTTP/cache entries to functional changes.
+.pioarduino-core/.cache/http/
 *-trace.json
 .tours
 /performance-result.json

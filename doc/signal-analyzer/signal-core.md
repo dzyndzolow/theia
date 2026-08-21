@@ -85,6 +85,13 @@ Struktura sterująca stany przechwytywania danych:
 
 Próba wykonania niedozwolonego przejścia (np. `STOPPED` -> `PAUSED`) rzuca wyrazisty wyjątek `InvalidStateException`.
 
+Każda próbka rejestrowana przez `CaptureSession.recordSample()` ma kontrakt
+`sequence`, `timestampNs`, `clockDomain` i wartość; `wallTimeUtc` jest wyłącznie
+opcjonalną metadaną prezentacyjną. Czas sesyjny jest monotoniczny, a czas
+spędzony w stanie `PAUSED` nie jest doliczany do kolejnych próbek. Metoda
+`replay()` przekazuje próbki w ich oryginalnej kolejności i nie zmienia ich
+timestampów ani nie uzależnia wyniku od szybkości wykonania konsumenta.
+
 ## 5. Przepływ danych w systemie (Diagram Mermaid)
 
 ```mermaid

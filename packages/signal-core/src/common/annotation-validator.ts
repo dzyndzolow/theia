@@ -41,6 +41,8 @@ export class AnnotationValidator {
     ): ProtocolAnnotation {
         return {
             id: `gap-${startTimeNs}-${endTimeNs}`,
+            // Root annotations use null by contract.
+            // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
             parentId: null,
             level: 0,
             startTimeNs,
@@ -60,6 +62,8 @@ export class AnnotationValidator {
     ): ProtocolAnnotation {
         return {
             id: `resync-${timestampNs}`,
+            // Root annotations use null by contract.
+            // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
             parentId: null,
             level: 0,
             startTimeNs: timestampNs,
@@ -86,6 +90,8 @@ export class AnnotationValidator {
 
         return {
             id: `fault-${decoderId}-${startTimeNs}`,
+            // Root annotations use null by contract.
+            // eslint-disable-next-line no-null/no-null -- required by ProtocolAnnotation
             parentId: null,
             level: 0,
             startTimeNs,

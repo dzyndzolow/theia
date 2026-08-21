@@ -268,6 +268,19 @@ describe('GlobalVariableRegistry (PLC-style Tag System)', () => {
             expect(events).to.have.lengthOf(2);
         });
 
+        it('should preserve an explicit sample timestamp and clock domain', () => {
+            const def = registry.define({ name: 'can.sample', type: 'UINT16' });
+            registry.write(def.id, 42, {
+                timestampNs: 123456789n,
+                clockDomain: 'can-capture',
+                source: 'CAN 0x123'
+            });
+
+            const state = registry.read(def.id);
+            expect(state?.timestampNs).to.equal(123456789n);
+            expect(state?.clockDomain).to.equal('can-capture');
+        });
+
         it('should emit onDidDefinitionChange on define, update, and remove', () => {
             const defEvents: VariableDefinitionChangeEvent[] = [];
             registry.onDidDefinitionChange(e => defEvents.push(e));
@@ -299,6 +312,26 @@ describe('GlobalVariableRegistry (PLC-style Tag System)', () => {
             expect(secondaryRegistry.findByName('var2')?.definition.length).to.equal(32);
 
             secondaryRegistry.dispose();
+        });
+
+        it('should reject an invalid snapshot atomically without importing earlier records', () => {
+            const json = JSON.stringify([
+                { definition: { name: 'valid.first', type: 'UINT8', writable: true }, state: { value: 7 } },
+                { definition: { name: 'invalid.second', type: 'NOT_A_TYPE', writable: true }, state: { value: 1 } }
+            ]);
+
+            expect(() => registry.importSnapshot(json)).to.throw();
+            expect(registry.findByName('valid.first')).to.be.undefined;
+            expect(registry.findByName('invalid.second')).to.be.undefined;
+        });
+
+        it('should round-trip BYTES values as JSON arrays', () => {
+            const def = registry.define({ name: 'payload.bytes', type: 'BYTES' });
+            registry.write(def.id, new Uint8Array([0xCA, 0xFE]), { force: true });
+            const restored = new GlobalVariableRegistry();
+            restored.importSnapshot(registry.exportSnapshot());
+            expect(Array.from(restored.read(def.id)?.value as Uint8Array)).to.deep.equal([0xCA, 0xFE]);
+            restored.dispose();
         });
 
         it('should export snapshot and restore state and values completely', () => {

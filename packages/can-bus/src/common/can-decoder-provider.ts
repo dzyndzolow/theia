@@ -52,6 +52,8 @@ export class CanDecoderProvider implements DecoderProvider {
     }
 
     private isSampleWindow(input: unknown): input is SampleWindow {
+        // `null` must be rejected by this runtime type guard.
+        // eslint-disable-next-line no-null/no-null -- object narrowing must reject null
         return typeof input === 'object' && input !== null && 'blocks' in input && Array.isArray((input as SampleWindow).blocks);
     }
 }

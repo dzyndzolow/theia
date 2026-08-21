@@ -426,3 +426,54 @@
 - Usunięte: —
 - Weryfikacja: `yarn --cwd packages/signal-core compile` (OK, 0 errors); `yarn --cwd packages/signal-core test` (52/52 passing, 18 nowych); `yarn --cwd packages/can-bus compile` (OK, 0 errors); `yarn --cwd packages/can-bus test` (79/79 passing, 3 nowe); `yarn --cwd examples/browser build` (0 errors w browser i node bundle).
 - Uwagi: Rejestr zmiennych `GlobalVariableRegistry` działa w `inSingletonScope` jako pojedyncze źródło prawdy (Single Source of Truth) dla wszystkich modułów i widoków aplikacji.
+
+---
+
+### 2026-08-20 | Codex GPT-5 — rewizja supervisora i plan stabilizacji | STATUS: REVIEWED
+
+- Zakres: wykonano przekrojową rewizję aktualnego `master`, koncepcji narzędzi AI oraz bieżącej implementacji `@theia/can-bus` i `@theia/signal-core`.
+- Decyzja: koncepcja „Git dla danych CAN” (`CAN Analysis Repository`, `CAN Commit`, `CAN Diff`) otrzymała akceptację kierunkową. Obecna funkcjonalność otrzymała `AKCEPTACJA WARUNKOWA` funkcjonalnie oraz `POPRAWKI WYMAGANE` jakościowo przed statusem stable.
+- Dodane: `doc/signal-analyzer/stabilization-current-functionality.md` z zadaniami STAB-01…STAB-09, priorytetami P0–P2, kolejnością realizacji i końcową bramką stabilności.
+- Zmienione: `doc/signal-analyzer/supervisor-report.md`, `doc/signal-analyzer/execution.md`, `doc/signal-analyzer/README.md`.
+- Weryfikacja: compile `can-bus` i `signal-core` OK; 82/82 testy `can-bus`; 52/52 testy `signal-core`; pełny build `@theia/example-browser` 0 błędów; Theia HTTP 200 na porcie 3000. Lint ujawnił 11 błędów `can-bus` i 32 błędy `signal-core`; test wizualny pozostał otwarty z powodu braku dostępnego połączenia z przeglądarką.
+- Następny krok: STAB-01 (lint i zależności), następnie poprawność bitów/czasu, testy UI, atomowa mapa zmiennych, lifecycle, granica upstream oraz aktualizacja dokumentacji. SA-301 i implementacja magazynu sesji AI pozostają zablokowane do przejścia bramki stable.
+
+---
+
+### 2026-08-20 | Codex GPT-5 — STAB-02 i początek STAB-03 | STATUS: VERIFIED
+
+- Zakres: użytkownik potwierdził stabilność bieżącego interfejsu w Browserze. Domknięto dekodowanie `UINT`/`INT` w `CanVariableBridge` dla zakresów do 32 bitów, endianowości, zakresów przez granicę bajtu, dzielnika oraz niepełnego payloadu.
+- Zmodyfikowane: `packages/can-bus/src/browser/can-variable-bridge.ts`, testy graniczne `can-variable-bridge.spec.ts`, kontrakty i registry Global Variables oraz `value-analyzer-widget.ts`.
+- STAB-03: `GlobalVariableState` przechowuje `clockDomain`; most CAN zapisuje timestamp ramki jako `timestampNs`, a CAN Value Plot używa czasu próbki zamiast czasu odbioru.
+- Weryfikacja: lint bez cache, compile obu pakietów, `can-bus` 84/84 testy, `signal-core` 53/53 testy, build `@theia/example-browser` bez błędów, `git diff --check` — OK.
+- Pozostaje: pełne ujednolicenie czasu dla sesji/replay/diff oraz STAB-04–STAB-09.
+
+## 2026-08-20 — Codex GPT-5 — STAB-03…STAB-09 quality gate
+
+- Added a single session-time contract: ordered samples, monotonic timestamps,
+  clock domains, pause-aware CaptureSession timing and timestamp-preserving replay.
+- Added DOM/renderer tests for confirmed byte ranges, typed decoding, multi-series
+  plotting, offsets, fixed Y range and HiDPI canvas sizing.
+- Added versioned, validated and atomic Global Variables map import/export with
+  CAN bindings and legacy snapshot migration.
+- Added lifecycle cleanup and CAN malformed-chunk diagnostics.
+- Removed the one-widget customization from Theia core, updated documentation,
+  and documented runtime cache hygiene.
+- Status: `GOTOWE DO OCENY SUPERVISORA`.
+
+---
+
+### 2026-08-21 | Codex GPT-5 | atomowy i wydajny transport CAN | STATUS: VERIFIED
+
+- Zakres: usunięto podwójne liczenie CRC32 i dekodowanie paczek bez aktywnych bindingów; dekoder waliduje pełny układ paczki przed przekazaniem ramek, dzięki czemu wadliwy chunk nie wykonuje częściowych zapisów Global Variables. Naprawiono również timestamp `CaptureSession` przy przejściu `PAUSED -> STOPPED` oraz trzy błędy lint w strażnikach obiektów.
+- Testy: dodano regresje dla szybkiej ścieżki bez bindingów, atomowego odrzucenia paczki z niezgodną liczbą ramek i zatrzymania sesji podczas pauzy. Próg testu 20 000 ramek został urealniony z faktycznych 500 ms do deklarowanych 50 ms i korzysta z mediany pięciu przebiegów.
+- Weryfikacja: compile i lint `@theia/can-bus` oraz `@theia/signal-core` — OK; testy `can-bus` 95/95 i `signal-core` 58/58; pełny build `@theia/example-browser` — 0 błędów; `git diff --check` — OK. Lokalny benchmark bez coverage: 3,38 ms mediany dla walidowanego dekodowania 20 000 ramek oraz 0,0004 ms dla `CanVariableBridge` bez bindingów.
+- Status: `GOTOWE DO OCENY SUPERVISORA`; nie nadano samodzielnie statusu `STABLE / ZAAKCEPTOWANE`.
+
+---
+
+### 2026-08-21 | decyzja właściciela | zamknięcie stabilizacji | STATUS: UKOŃCZONE
+
+- Decyzja: po samodzielnej naprawie i pełnej weryfikacji właściciel nadał partii STAB-01…STAB-09 oraz CAN Value Plot końcowy status `UKOŃCZONE`.
+- Dowody: compile i lint obu pakietów OK; `can-bus` 95/95 testów; `signal-core` 58/58 testów; pełny build `@theia/example-browser` z 0 błędów; próg dekodowania 20 000 ramek < 50 ms; `git diff --check` OK.
+- Następny krok: zapis zweryfikowanej partii w Git i publikacja na gałęzi zdalnej.
