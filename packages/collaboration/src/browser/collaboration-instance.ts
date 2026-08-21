@@ -160,7 +160,7 @@ export class CollaborationInstance implements Disposable {
             this.messageService.error(message);
             this.dispose();
         });
-        this.yjsProvider = new OpenCollaborationYjsProvider(connection as any, this.yjs, this.yjsAwareness);
+        this.yjsProvider = new OpenCollaborationYjsProvider(connection, this.yjs, this.yjsAwareness);
         this.yjsProvider.connect();
         this.toDispose.push(Disposable.create(() => this.yjs.destroy()));
         this.toDispose.push(this.yjsProvider);

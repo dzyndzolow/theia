@@ -16,7 +16,6 @@
 
 import * as temp from 'temp';
 import * as chai from 'chai';
-import * as cp from 'child_process';
 import * as fs from '@theia/core/shared/fs-extra';
 import * as assert from 'assert';
 import URI from '@theia/core/lib/common/uri';
@@ -37,13 +36,9 @@ describe('parcel-filesystem-watcher', function (): void {
 
     beforeEach(async () => {
         let tempPath = temp.mkdirSync('node-fs-root');
-        // Sometimes tempPath will use some Windows 8.3 short name in its path. This is a problem
-        // since parcel always returns paths with long names. We need to convert here.
-        // See: https://stackoverflow.com/a/34473971/7983255
+        // Parcel returns long Windows paths, so resolve a possible 8.3 short path first.
         if (process.platform === 'win32') {
-            tempPath = cp.execSync(`powershell "(Get-Item -LiteralPath '${tempPath}').FullName"`, {
-                encoding: 'utf8',
-            }).trim();
+            tempPath = fs.realpathSync.native(tempPath);
         }
         root = FileUri.create(fs.realpathSync(tempPath));
         watcherService = createParcelFileSystemWatcherService();

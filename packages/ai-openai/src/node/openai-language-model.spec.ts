@@ -202,7 +202,11 @@ describe('OpenAiModelUtils Chat Completions processMessages', () => {
     });
 
     it('normalizes a developer role to system for Mistral-compatible endpoints', async () => {
-        const client = new MistralFixedOpenAI({ apiKey: 'test-key', baseURL: 'https://example.com/v1', fetch: async () => new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }) });
+        const client = new MistralFixedOpenAI({
+            apiKey: 'test-key',
+            baseURL: 'https://example.com/v1',
+            fetch: async () => new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } })
+        });
         const options: { body: { messages: Array<{ role: string; content: string }> } } = {
             body: {
                 messages: [

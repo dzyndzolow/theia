@@ -92,7 +92,7 @@ describe('ViewportController', () => {
         });
 
         it('should fire onCursorChanged event', () => {
-            let received: bigint | undefined | null = null;
+            let received: bigint | undefined;
             controller.onCursorChanged(c => { received = c; });
             controller.setCursor(BigInt(999));
             expect(received).to.equal(BigInt(999));

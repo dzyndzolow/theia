@@ -87,6 +87,9 @@
       "path": "../../packages/callhierarchy"
     },
     {
+      "path": "../../packages/can-bus"
+    },
+    {
       "path": "../../packages/collaboration"
     },
     {
@@ -190,6 +193,9 @@
     },
     {
       "path": "../../packages/secondary-window"
+    },
+    {
+      "path": "../../packages/signal-ui"
     },
     {
       "path": "../../packages/task"
