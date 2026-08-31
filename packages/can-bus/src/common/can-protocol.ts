@@ -127,10 +127,38 @@ export interface CanRpcClient {
     onBinaryFrames?(chunk: ArrayBuffer): void;
 }
 
+export interface CanRpcInterfaceInfo {
+    readonly id: string;
+    readonly displayName: string;
+    readonly category: 'VIRTUAL' | 'ESP32' | 'PCAN' | 'SLCAN' | 'OTHER';
+    readonly isHardware: boolean;
+    readonly transport?: string;
+}
+
+/**
+ * Explicit, bounded transmit authorization created by the user-facing ARM
+ * action.  The backend deliberately does not expose the permissive
+ * ALLOW_ALL_11BIT_BENCH_ONLY policy over RPC.
+ */
+export interface CanTxArmRequest {
+    readonly interfaceName: string;
+    readonly allowedIds: readonly number[];
+    readonly allowExtendedIds: boolean;
+    readonly maxFps: number;
+    readonly maxBusLoadPercent: number;
+    readonly maxDurationMs: number;
+}
+
 export interface CanRpc {
     startCapture(config: CanInterfaceConfig): Promise<void>;
     stopCapture(interfaceName?: string): Promise<void>;
     getStatistics(): Promise<CanStatistics>;
+    getAvailableInterfaces(): Promise<CanRpcInterfaceInfo[]>;
+    registerTcpDevice(host: string, port?: number): Promise<CanRpcInterfaceInfo>;
+    armTransmit(request: CanTxArmRequest): Promise<void>;
+    disarmTransmit(): Promise<void>;
+    sendFrame(frame: CanFrame): Promise<boolean>;
+    emergencyStop(): Promise<void>;
 }
 
 export const CAN_BINARY_MAGIC = 0x43414E30;

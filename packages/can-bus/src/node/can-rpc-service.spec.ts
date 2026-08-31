@@ -19,6 +19,7 @@ import { CanRpcServiceImpl } from './can-rpc-service';
 import { CanSocketServiceImpl, ICanSocketService } from './can-socket-service';
 import { CanFrame, CanInterfaceConfig, CanStatistics, CanBinaryDecoder, CanRpcClient } from '../common/can-protocol';
 import { Emitter } from '@theia/core/lib/common';
+import { CanTransmitServiceImpl } from './can-transmit-service';
 
 class TestableCanRpcService extends CanRpcServiceImpl {
     public hasClient(client: CanRpcClient): boolean {
@@ -63,8 +64,19 @@ describe('CanRpcServiceImpl', () => {
         mockSocket.start = (_config: CanInterfaceConfig) => { started = true; };
 
         const service = new CanRpcServiceImpl(mockSocket);
-        await service.startCapture({ name: 'can0', bitrate: 500000 });
+        await service.startCapture({ name: 'demo', bitrate: 500000 });
         expect(started).to.be.true;
+    });
+
+    it('rejects unknown virtual interface names instead of allocating unbounded simulators', async () => {
+        const service = new CanRpcServiceImpl(mockSocket);
+        let rejected = false;
+        try {
+            await service.startCapture({ name: 'attacker-created-interface', bitrate: 500000 });
+        } catch {
+            rejected = true;
+        }
+        expect(rejected).to.be.true;
     });
 
     it('delegates stopCapture to socket service', async () => {
@@ -80,42 +92,67 @@ describe('CanRpcServiceImpl', () => {
         const service = new CanRpcServiceImpl(mockSocket);
         const stats = await service.getStatistics();
         expect(stats.totalFrames).to.equal(42);
+        expect(stats.framesPerSecond).to.equal(100);
+        expect(stats.errors).to.equal(0);
+        expect(stats.busLoad).to.equal(5);
+        expect(stats.droppedFrames).to.equal(0);
     });
 
-    it('cleans up DisposableCollection on dispose', () => {
-        const service = new CanRpcServiceImpl(mockSocket);
-        service.setClient({ onDidCloseConnection: () => undefined });
-        expect(() => service.dispose()).to.not.throw();
-    });
-
-    it('does not stop other clients when one client disconnects', () => {
+    it('registers and unregisters clients via setClient and removeClient', () => {
         const service = new TestableCanRpcService(mockSocket);
-        let firstClosed = false;
+        const client1: CanRpcClient = {};
+        const client2: CanRpcClient = {};
 
-        const firstClient = { onDidCloseConnection: () => { firstClosed = true; } };
-        const secondClient = { onDidCloseConnection: () => undefined };
+        service.setClient(client1);
+        expect(service.hasClient(client1)).to.be.true;
+        expect(service.clientCount).to.equal(1);
 
-        service.setClient(firstClient);
-        service.setClient(secondClient);
+        service.setClient(client2);
+        expect(service.hasClient(client2)).to.be.true;
+        expect(service.clientCount).to.equal(2);
 
-        // Simulate first client disconnecting
-        if (firstClient.onDidCloseConnection) {
-            firstClient.onDidCloseConnection();
+        service.removeClient(client1);
+        expect(service.hasClient(client1)).to.be.false;
+        expect(service.clientCount).to.equal(1);
+
+        service.removeClient(client2);
+        expect(service.hasClient(client2)).to.be.false;
+        expect(service.clientCount).to.equal(0);
+    });
+
+    it('automatically unregisters client when onDidCloseConnection fires', () => {
+        const service = new TestableCanRpcService(mockSocket);
+        let closeCallback: (() => void) | undefined;
+        const client: CanRpcClient = {
+            onDidCloseConnection: () => {
+                if (closeCallback) { closeCallback(); }
+            }
+        };
+
+        service.setClient(client);
+        expect(service.hasClient(client)).to.be.true;
+
+        if (client.onDidCloseConnection) {
+            client.onDidCloseConnection();
         }
 
-        // Second client should still be registered
-        expect(service.hasClient(secondClient)).to.be.true;
-        expect(service.hasClient(firstClient)).to.be.false;
-        expect(firstClosed).to.be.true;
+        expect(service.hasClient(client)).to.be.false;
+        expect(service.clientCount).to.equal(0);
     });
 
-    it('clears all clients and interfaces on full dispose', () => {
+    it('stops capture and batching when the last client disconnects', async () => {
+        let stopCalled = false;
+        mockSocket.stop = () => { stopCalled = true; };
+
         const service = new TestableCanRpcService(mockSocket);
-        service.setClient({});
-        service.setClient({});
-        service.startCapture({ name: 'demo', bitrate: 100 });
-        service.dispose();
-        expect(service.clientCount).to.equal(0);
+        const client: CanRpcClient = {};
+
+        service.setClient(client);
+        await service.startCapture({ name: 'demo', bitrate: 500000 });
+        expect(service.activeInterfaceCount).to.equal(1);
+
+        service.removeClient(client);
+        expect(stopCalled).to.be.true;
         expect(service.activeInterfaceCount).to.equal(0);
     });
 
@@ -129,21 +166,22 @@ describe('CanRpcServiceImpl', () => {
             }
         });
 
-        await service.startCapture({ name: 'can0', bitrate: 500000 });
+        await service.startCapture({ name: 'demo', bitrate: 500000 });
         mockFrameEmitter.fire({
-            id: 0x123, extended: false, rtr: false, dlc: 2, data: [1, 2], timestamp: 10, interface: 'can0'
+            id: 0x123, extended: false, rtr: false, dlc: 2, data: [1, 2], timestamp: 10, interface: 'demo'
         });
 
+        await new Promise<void>(resolve => setTimeout(resolve, 80));
         await service.stopCapture();
         expect(receivedChunk).to.be.instanceOf(ArrayBuffer);
     });
 
     it('tracks droppedFrames when no client onBinaryFrames handler is attached', async () => {
         const service = new CanRpcServiceImpl(mockSocket);
-        await service.startCapture({ name: 'can0', bitrate: 500000 });
+        await service.startCapture({ name: 'demo', bitrate: 500000 });
 
         mockFrameEmitter.fire({
-            id: 0x123, extended: false, rtr: false, dlc: 2, data: [1, 2], timestamp: 10, interface: 'can0'
+            id: 0x123, extended: false, rtr: false, dlc: 2, data: [1, 2], timestamp: 10, interface: 'demo'
         });
 
         await service.stopCapture();
@@ -157,7 +195,6 @@ describe('CanRpcServiceImpl', () => {
         const receivedChunks: ArrayBuffer[] = [];
         service.setClient({ onBinaryFrames: chunk => receivedChunks.push(chunk) });
 
-        // Two concurrent captures (demo + demo2) must both reach the client.
         await service.startCapture({ name: 'demo', bitrate: 100, frameRate: 100 });
         await service.startCapture({ name: 'demo2', bitrate: 100, frameRate: 100 });
         await new Promise<void>(resolve => setTimeout(resolve, 80));
@@ -211,5 +248,88 @@ describe('CanRpcServiceImpl', () => {
 
         expect(interfaces.has('demo')).to.equal(true);
         await service.stopCapture();
+    });
+
+    it('returns virtual and hardware interfaces from getAvailableInterfaces', async () => {
+        const service = new CanRpcServiceImpl(mockSocket);
+        const ifaces = await service.getAvailableInterfaces();
+        expect(ifaces.length).to.be.at.least(3);
+        expect(ifaces.some(i => i.id === 'demo')).to.be.true;
+        expect(ifaces.some(i => i.id === 'demo2')).to.be.true;
+        expect(ifaces.some(i => i.id === 'sim0')).to.be.true;
+    });
+
+    it('transmits frame and echoes it to binary clients via sendFrame', async () => {
+        const transmitService = new CanTransmitServiceImpl();
+        const service = new CanRpcServiceImpl(mockSocket, undefined, undefined, transmitService);
+        const receivedFrames: CanFrame[] = [];
+        service.setClient({
+            onBinaryFrames: chunk => {
+                CanBinaryDecoder.decodeBatch(chunk, f => receivedFrames.push(f));
+            }
+        });
+
+        await service.startCapture({ name: 'demo', bitrate: 500000 });
+        await service.armTransmit({
+            interfaceName: 'demo',
+            allowedIds: [0x321],
+            allowExtendedIds: false,
+            maxFps: 100,
+            maxBusLoadPercent: 50,
+            maxDurationMs: 10_000
+        });
+        const sent = await service.sendFrame({
+            id: 0x321,
+            extended: false,
+            rtr: false,
+            dlc: 4,
+            data: [10, 20, 30, 40],
+            timestamp: 100,
+            interface: 'demo'
+        });
+
+        expect(sent).to.be.true;
+        await new Promise(r => setTimeout(r, 80));
+        await service.stopCapture();
+
+        expect(receivedFrames.some(f => f.id === 0x321)).to.be.true;
+    });
+
+    it('fails closed before ARM and rejects a frame outside the armed allowlist', async () => {
+        const transmitService = new CanTransmitServiceImpl();
+        const service = new CanRpcServiceImpl(mockSocket, undefined, undefined, transmitService);
+        const frame: CanFrame = {
+            id: 0x321,
+            extended: false,
+            rtr: false,
+            dlc: 1,
+            data: [0x55],
+            timestamp: 100,
+            interface: 'demo'
+        };
+
+        await service.startCapture({ name: 'demo', bitrate: 500000 });
+        expect(await service.sendFrame(frame)).to.be.false;
+        await service.armTransmit({
+            interfaceName: 'demo',
+            allowedIds: [0x123],
+            allowExtendedIds: false,
+            maxFps: 100,
+            maxBusLoadPercent: 50,
+            maxDurationMs: 10_000
+        });
+        expect(await service.sendFrame(frame)).to.be.false;
+        await service.stopCapture();
+    });
+
+    it('stops capture and flushes batches upon emergencyStop', async () => {
+        let stopCalled = false;
+        mockSocket.stop = () => { stopCalled = true; };
+
+        const service = new CanRpcServiceImpl(mockSocket);
+        await service.startCapture({ name: 'demo', bitrate: 500000 });
+        await service.emergencyStop();
+
+        expect(stopCalled).to.be.true;
     });
 });

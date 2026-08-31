@@ -88,6 +88,7 @@ export class CanWidget extends BaseWidget {
         this.scrollOptions = undefined;
         this.buildUI();
         this.toDispose.push(this.interfaceReservation.onDidChange(() => this.updateInterfaceChoices()));
+        this.toDispose.push(this.canRpcClient.onDidChangeInterfaces(() => this.updateInterfaceChoices()));
         this.onDidDispose(() => this.interfaceReservation.release(this.id));
     }
 
@@ -227,7 +228,26 @@ export class CanWidget extends BaseWidget {
         this.scheduleRender();
     }
 
-    protected selectInterface(interfaceName: string | undefined): void {
+    protected async selectInterface(interfaceName: string | undefined): Promise<void> {
+        if (interfaceName === '__ADD_TCP__') {
+            const host = window.prompt('Enter ESP32-S3 IP or hostname (e.g. 192.168.1.150):', '192.168.1.150');
+            if (host && host.trim()) {
+                const portStr = window.prompt('Enter TCP port (default 9751):', '9751');
+                const port = portStr ? parseInt(portStr.trim(), 10) : 9751;
+                try {
+                    const newIface = await this.canRpcClient.registerTcpDevice(host.trim(), isNaN(port) ? 9751 : port);
+                    interfaceName = newIface.id;
+                } catch (err) {
+                    console.error('Failed to register TCP device:', err);
+                    this.updateInterfaceChoices();
+                    return;
+                }
+            } else {
+                this.updateInterfaceChoices();
+                return;
+            }
+        }
+
         if (interfaceName === this.selectedInterface) {
             return;
         }
@@ -242,23 +262,66 @@ export class CanWidget extends BaseWidget {
         this.updateInterfaceChoices();
     }
 
-    protected updateInterfaceChoices(): void {
+    protected async updateInterfaceChoices(): Promise<void> {
         if (!this.interfaceSelectEl) {
             return;
         }
         const previous = this.selectedInterface || '';
         this.interfaceSelectEl.replaceChildren();
+
         const placeholder = document.createElement('option');
         placeholder.value = '';
         placeholder.textContent = 'Choose interface…';
         this.interfaceSelectEl.appendChild(placeholder);
-        for (const interfaceName of ['demo', 'demo2']) {
-            const option = document.createElement('option');
-            option.value = interfaceName;
-            option.textContent = interfaceName === 'demo' ? 'Demo' : 'Demo 2';
-            option.disabled = this.interfaceReservation.isReservedByOther(this.id, interfaceName);
-            this.interfaceSelectEl.appendChild(option);
+
+        try {
+            const ifaces = await this.canRpcClient.getAvailableInterfaces();
+            const groups: { [key: string]: HTMLOptGroupElement } = {
+                VIRTUAL: document.createElement('optgroup'),
+                ESP32: document.createElement('optgroup'),
+                PCAN: document.createElement('optgroup'),
+                SLCAN: document.createElement('optgroup'),
+                OTHER: document.createElement('optgroup')
+            };
+
+            groups.VIRTUAL.label = 'Virtual / Simulators';
+            groups.ESP32.label = 'ESP32-S3 Hardware';
+            groups.PCAN.label = 'PCAN Adapters';
+            groups.SLCAN.label = 'CANable / SLCAN Adapters';
+            groups.OTHER.label = 'Other Hardware';
+
+            for (const iface of ifaces) {
+                const opt = document.createElement('option');
+                opt.value = iface.id;
+                opt.textContent = iface.displayName;
+                opt.disabled = this.interfaceReservation.isReservedByOther(this.id, iface.id);
+
+                const grp = groups[iface.category] || groups.OTHER;
+                grp.appendChild(opt);
+            }
+
+            for (const g of Object.values(groups)) {
+                if (g.children.length > 0) {
+                    this.interfaceSelectEl.appendChild(g);
+                }
+            }
+        } catch {
+            // Fallback for offline/mock mode
+            for (const interfaceName of ['demo', 'demo2', 'sim0']) {
+                const option = document.createElement('option');
+                option.value = interfaceName;
+                option.textContent = interfaceName;
+                option.disabled = this.interfaceReservation.isReservedByOther(this.id, interfaceName);
+                this.interfaceSelectEl.appendChild(option);
+            }
         }
+
+        // Add special action option to configure new TCP endpoint
+        const addTcpOpt = document.createElement('option');
+        addTcpOpt.value = '__ADD_TCP__';
+        addTcpOpt.textContent = '➕ Add TCP Device (IP:Port)…';
+        this.interfaceSelectEl.appendChild(addTcpOpt);
+
         this.interfaceSelectEl.value = previous;
     }
 

@@ -33,7 +33,6 @@ export class CanValueViewContribution extends AbstractViewContribution<ValueAnal
     }
 
     override registerCommands(registry: CommandRegistry): void {
-        // `super.registerCommands` already registers the toggle command.
         super.registerCommands(registry);
         registry.registerCommand({ id: CanValueCommands.NEW_VALUE_ANALYZER, label: 'New CAN Value Plot' }, {
             execute: () => this.openNewValueAnalyzer()
@@ -53,7 +52,7 @@ export class CanValueViewContribution extends AbstractViewContribution<ValueAnal
         const analyzerMenuPath = [...MAIN_MENU_BAR, 'sample-menu'];
         menus.registerMenuAction(analyzerMenuPath, {
             commandId: CanValueCommands.NEW_VALUE_ANALYZER,
-            order: '2'
+            order: '3'
         });
     }
 }

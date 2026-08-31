@@ -973,3 +973,243 @@
     border-top: 1px solid var(--theia-input-border, #333);
     padding-top: 12px;
 }
+
+/* =============================================================================
+ * CAN Frame & Wave Generator Widget Styles
+ * ============================================================================= */
+
+.can-generator-widget {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    background-color: var(--theia-layout-color0, #1e1e1e);
+    color: var(--theia-ui-font-color, #cccccc);
+    font-family: var(--theia-ui-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
+    font-size: var(--theia-ui-font-size, 13px);
+    overflow: hidden;
+}
+
+.can-gen-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.can-gen-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background-color: var(--theia-layout-color1, #252526);
+    border-bottom: 1px solid var(--theia-border, #3c3c3c);
+    flex-wrap: wrap;
+}
+
+.can-gen-control-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.can-gen-arm-btn {
+    font-weight: 600;
+    transition: all 0.2s ease;
+    border-radius: 4px;
+    padding: 4px 12px;
+}
+
+.can-gen-arm-btn.disarmed {
+    background-color: #383838;
+    color: #e5a50a;
+    border: 1px solid #e5a50a;
+}
+
+.can-gen-arm-btn.disarmed:hover {
+    background-color: #4a3e14;
+}
+
+.can-gen-arm-btn.armed {
+    background-color: #0e639c;
+    color: #ffffff;
+    border: 1px solid #1177bb;
+    box-shadow: 0 0 8px rgba(14, 99, 156, 0.6);
+}
+
+.can-gen-stop-btn {
+    background-color: #c72e2e !important;
+    color: #ffffff !important;
+    font-weight: bold;
+    border: 1px solid #e53935 !important;
+    padding: 4px 14px;
+    border-radius: 4px;
+    box-shadow: 0 0 6px rgba(199, 46, 46, 0.4);
+}
+
+.can-gen-stop-btn:hover {
+    background-color: #e53935 !important;
+}
+
+.can-gen-status-badge {
+    margin-left: auto;
+    font-family: var(--theia-code-font-family, monospace);
+    font-size: 12px;
+    color: var(--theia-descriptionForeground, #888888);
+    background: rgba(0, 0, 0, 0.25);
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--theia-border, #333333);
+}
+
+.can-gen-nav-tabs {
+    display: flex;
+    background-color: var(--theia-layout-color2, #2d2d2d);
+    border-bottom: 1px solid var(--theia-border, #3c3c3c);
+    padding: 0 12px;
+    gap: 4px;
+}
+
+.can-gen-tab-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--theia-foreground, #cccccc);
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+
+.can-gen-tab-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.can-gen-tab-btn.active {
+    color: #ffffff;
+    border-bottom: 2px solid var(--theia-focusBorder, #007acc);
+    font-weight: 600;
+    background: rgba(0, 122, 204, 0.1);
+}
+
+.can-gen-tab-content {
+    padding: 16px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.can-gen-card {
+    background: var(--theia-layout-color1, #252526);
+    border: 1px solid var(--theia-border, #3c3c3c);
+    border-radius: 6px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.can-gen-card h3 {
+    margin: 0 0 6px 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--theia-ui-font-color0, #ffffff);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.can-gen-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.can-gen-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.can-gen-field label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--theia-descriptionForeground, #999999);
+}
+
+.can-gen-bytes-box {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--theia-border, #333333);
+    border-radius: 6px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.can-gen-bytes-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.can-gen-byte-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.can-gen-byte-cell span {
+    font-size: 10px;
+    color: var(--theia-descriptionForeground, #888888);
+}
+
+.byte-input {
+    width: 38px;
+    text-align: center;
+    font-family: var(--theia-code-font-family, monospace);
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.can-gen-presets {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.can-gen-presets button {
+    font-size: 11px;
+    padding: 3px 8px;
+}
+
+.can-gen-preview-box {
+    background: #141414;
+    border: 1px solid #333333;
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.can-gen-canvas {
+    width: 100%;
+    height: 120px;
+    background: #181818;
+    border-radius: 4px;
+    display: block;
+}
+
+.can-gen-actions-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}

@@ -25,6 +25,8 @@ import { ValueAnalyzerWidget, VALUE_ANALYZER_WIDGET_ID, ValueAnalyzerOptions } f
 import { CanValueViewContribution } from './value-analyzer-view-contribution';
 import { GlobalVariablesWidget, GLOBAL_VARIABLES_WIDGET_ID } from './global-variables-widget';
 import { GlobalVariablesViewContribution } from './global-variables-view-contribution';
+import { CanGeneratorWidget, CAN_GENERATOR_WIDGET_ID } from './can-generator-widget';
+import { CanGeneratorViewContribution } from './can-generator-view-contribution';
 import { WidgetInstanceNumbers } from './widget-instance-numbers';
 import { CanInterfaceReservation } from './can-interface-reservation';
 import { CanRpcClient } from './can-rpc-client';
@@ -40,6 +42,8 @@ export default new ContainerModule(bind => {
     bind(CanVariableBridge).toSelf().inSingletonScope();
     bind(CanRpcClient).toSelf().inSingletonScope();
     bind(CanInterfaceReservation).toSelf().inSingletonScope();
+
+    // 1. CAN Bus Analyzer
     bind(CanWidget).toSelf().inTransientScope();
     bind(WidgetFactory).toDynamicValue(context => ({
         id: CanBusWidget.ID,
@@ -57,6 +61,7 @@ export default new ContainerModule(bind => {
     bindViewContribution(bind, CanViewContribution);
     bind(OpenHandler).to(CanViewContribution).inSingletonScope();
 
+    // 2. CAN Matrix Widget
     bind(CanMatrixWidget).toSelf().inTransientScope();
     bind(WidgetFactory).toDynamicValue(context => ({
         id: CAN_MATRIX_WIDGET_ID,
@@ -74,6 +79,7 @@ export default new ContainerModule(bind => {
     bindViewContribution(bind, CanMatrixViewContribution);
     bind(OpenHandler).to(CanMatrixViewContribution).inSingletonScope();
 
+    // 3. Value Analyzer Widget
     bind(ValueAnalyzerWidget).toSelf().inTransientScope();
     bind(WidgetFactory).toDynamicValue(context => ({
         id: VALUE_ANALYZER_WIDGET_ID,
@@ -94,6 +100,7 @@ export default new ContainerModule(bind => {
     bindViewContribution(bind, CanValueViewContribution);
     bind(OpenHandler).to(CanValueViewContribution).inSingletonScope();
 
+    // 4. Global Variables Widget
     bind(GlobalVariablesWidget).toSelf().inSingletonScope();
     bind(WidgetFactory).toDynamicValue(context => ({
         id: GLOBAL_VARIABLES_WIDGET_ID,
@@ -102,4 +109,12 @@ export default new ContainerModule(bind => {
     bindViewContribution(bind, GlobalVariablesViewContribution);
     bind(OpenHandler).to(GlobalVariablesViewContribution).inSingletonScope();
 
+    // 5. CAN Generator & Transmitter Widget
+    bind(CanGeneratorWidget).toSelf().inTransientScope();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: CAN_GENERATOR_WIDGET_ID,
+        createWidget: () => context.container.get<CanGeneratorWidget>(CanGeneratorWidget)
+    }));
+    bindViewContribution(bind, CanGeneratorViewContribution);
+    bind(OpenHandler).to(CanGeneratorViewContribution).inSingletonScope();
 });

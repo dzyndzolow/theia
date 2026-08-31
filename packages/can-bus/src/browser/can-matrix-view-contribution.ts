@@ -53,7 +53,7 @@ export class CanMatrixViewContribution extends AbstractViewContribution<CanMatri
         const analyzerMenuPath = [...MAIN_MENU_BAR, 'sample-menu'];
         menus.registerMenuAction(analyzerMenuPath, {
             commandId: CanMatrixCommands.NEW_MATRIX,
-            order: '1'
+            order: '2'
         });
     }
 }

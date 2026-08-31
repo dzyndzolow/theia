@@ -265,12 +265,7 @@ export class SampleCommandContribution implements CommandContribution {
 export class SampleMenuContribution implements MenuContribution {
     registerMenus(menus: MenuModelRegistry): void {
         const subMenuPath = [...MAIN_MENU_BAR, 'sample-menu'];
-        menus.registerSubmenu(subMenuPath, 'Analyzer', { sortString: '2' }); // puts Analyzer menu next to File menu
-
-        const subSubMenuPath = [...subMenuPath, 'sample-sub-menu'];
-        menus.registerSubmenu(subSubMenuPath, 'Sample sub menu', { sortString: '2' });
-        const placeholder = new PlaceholderMenuNode([...subSubMenuPath, 'placeholder'].join('-'), 'Placeholder', '0');
-        menus.registerCommandMenu(subSubMenuPath, placeholder);
+        menus.registerSubmenu(subMenuPath, 'CAN', { sortString: '2' });
     }
 }
 

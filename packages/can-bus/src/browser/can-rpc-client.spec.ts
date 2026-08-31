@@ -31,7 +31,13 @@ function createClient(): { client: CanRpcClient; provider: MockProvider } {
         proxy: {
             startCapture: async () => undefined,
             stopCapture: async () => undefined,
-            getStatistics: async () => ({ totalFrames: 0, framesPerSecond: 0, errors: 0, busLoad: 0, startTime: Date.now() })
+            getStatistics: async () => ({ totalFrames: 0, framesPerSecond: 0, errors: 0, busLoad: 0, startTime: Date.now() }),
+            getAvailableInterfaces: async () => [],
+            registerTcpDevice: async () => ({ id: 'mock:tcp', displayName: 'Mock TCP', category: 'ESP32', isHardware: true }),
+            armTransmit: async () => undefined,
+            disarmTransmit: async () => undefined,
+            sendFrame: async () => true,
+            emergencyStop: async () => undefined
         }
     };
     const container = new Container();

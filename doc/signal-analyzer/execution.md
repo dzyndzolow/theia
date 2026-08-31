@@ -41,6 +41,10 @@ Ten dokument jest zywym rejestrem wykonania. Uzupelnia `SIGNAL-ANALYZER-ROADMAP.
 
 | GLOBAL-VARS | ZAAKCEPTOWANE | Centralny rejestr globalnych zmiennych w stylu PLC: kontrakty, rejestr `GlobalVariableRegistry` z walidacją 11 typów, wersjonowaniem, snapshotami JSON oraz widżet `GlobalVariablesWidget` z edytowalną tabelą i importem/eksportem. (58/58 testy signal-core, 95/95 testy can-bus passing). | Zadanie zakończone. |
 | STABLE-BASE | UKOŃCZONE | Wdrożono STAB-01…STAB-09: lint, zakresy 32-bit, kontrakt czasu sesji/replay, testy UI/rendererów, atomową mapę zmiennych, lifecycle, granicę upstream, dokumentację i higienę runtime. | Bramka techniczna zamknięta decyzją właściciela 2026-08-21. |
+| SA-701 | PERSPEKTYWA — WSTRZYMANE | Plan Logic Analyzer, integracji sprzętu i własnego hardware zachowano jako kolejny etap. | Nie rozpoczynać SA-702…SA-909 bez nowego polecenia właściciela. |
+| SA-409…SA-424 | PLAN AKTYWNY | CAN Device Lab: symulator DUT, bezpieczny TX, feedback manual/RX-delta/SCPI, adaptacyjne zawężanie, odkrywanie funkcji, import, odpowiedzi, generatory, Python i reprodukcja. | Równolegle SA-409 (symulator) i SA-410 (kontrakty/safety); po obu akceptacjach SA-406, następnie SA-411…SA-414 jako pierwszy vertical slice. |
+| SA-HW-001 / HIL | HOST STABILNY — HARDWARE NIEZWERYFIKOWANY | Fail-closed host, TCAN codec, safety i fixture'y przechodzą testy; produkcyjne discovery nie udaje urządzeń fizycznych. | Wykonać `can-hardware-device-test-plan.md`: ESP32 USB capture-only, potem TX, TCP, PCAN-COMPAT-01 i CANable 2.0. |
+| SA-610 | GOTOWE DO REWIZJI — WSTRZYMANE OPERACYJNIE | Plan Industrial Protocol Analyzer: pasywny capture/import, PCAPNG, Modbus RTU, EtherCAT i PROFINET. | Nie rozpoczynać SA-611…SA-619 bez ponownego polecenia właściciela. |
 
 ## Kolejnosc pracy teraz
 
@@ -48,12 +52,32 @@ Ten dokument jest zywym rejestrem wykonania. Uzupelnia `SIGNAL-ANALYZER-ROADMAP.
 2. Naprawiono usterkę niepoprawnego wywoływania stopCapture oraz zaimplementowano dynamiczny wybór źródła analizatora w widżecie CAN ID Matrix.
 3. CAN Value Plot został przebudowany na źródło Global Variables i wiele serii na jednym wykresie; poprawki jakościowe STAB-01…STAB-09 są wdrożone.
 4. Stabilizacja obecnej funkcjonalności została zamknięta statusem `UKOŃCZONE` decyzją właściciela 2026-08-21.
-5. Faza 3 — SA-301 (`@theia/signal-ui` i `ViewportController`) oraz implementacja magazynu sesji AI mogą korzystać z zamkniętej bazy stabilizacyjnej.
-6. Pełny plan i dowody są w `supervisor-report.md`; nie zastępuj go streszczeniami w rekordach zadań.
+5. Logic Analyzer i własny hardware zostały przeniesione do perspektywy rozwoju. Dokumenty SA-701…SA-909 pozostają, ale zadania są wstrzymane do nowego polecenia właściciela.
+6. **ZASTĄPIONE OPERACYJNIE 2026-08-28:** Industrial Protocol Analyzer był najbliższym etapem od 2026-08-24. Plan SA-610…SA-619 pozostaje ważny, ale wykonanie jest wstrzymane do ponownej decyzji właściciela.
+7. Warstwa hosta Fazy 4A przechodzi bramki automatyczne. Aktywny następny etap to rzeczywista kwalifikacja HIL urządzeń CAN na izolowanym stole zgodnie z `can-hardware-device-test-plan.md`.
+8. SA-409 (deterministyczny śpiący DUT) i SA-410 (kontrakt safety/event bus) są pierwszą dozwoloną parą równoległą — mają rozłączne pliki. Po akceptacji obu kolejność pierwszego vertical slice jest sekwencyjna: SA-406 → SA-411 → SA-412 → SA-413 → SA-414.
+9. Po SA-414 zadania SA-415 (bity) i SA-416 (liczby/tekst) mogą być przygotowywane równolegle tylko po potwierdzeniu rozłącznych plików. Dalsze tory obejmują SA-422 (sensory), SA-417/SA-423 (importery) oraz sekwencję SA-418 → SA-419 → SA-420; SA-424 scala je w reprodukowalny pakiet przed bramką SA-421.
+10. Pełny plan i dowody stabilizacji są w `supervisor-report.md`; nie zastępuj go streszczeniami w rekordach zadań.
 
 ## Rekomendacja dla kolejnego modelu
 
-**AKTUALNA — 2026-08-20:** rozpocznij od STAB-01, a następnie realizuj kolejność z `stabilization-current-functionality.md`. Nie dodawaj nowych funkcji AI, CAN Session Diff ani Fazy 3 przed przejściem compile + lint + test + build + manual Browser gate.
+**AKTUALNA — 2026-08-31:** nie rozwijaj kolejnych funkcji symulatora przed testem fizycznym. Najpierw zbierz board profile i fingerprint, uruchom rzeczywisty ESP32-S3 po USB wyłącznie w capture-only oraz wykonaj HIL-0/HIL-1. Dopiero po zgodnym śladzie z drugim interfejsem wdrażaj i testuj device-side policy/ARM/TX/E-STOP. Następnie powtórz ten sam conformance trace po TCP, a później zintegruj posiadany PCAN-compatible i CANable 2.0. Każdy wynik ma artefakty oraz osobny status `BENCH_VERIFIED`, `CAPTURE_ONLY`, `DEGRADED` albo `BLOCKED`.
+
+### Rekomendacja historyczna — ZASTĄPIONA 2026-08-31 po stabilizacji hosta
+
+**2026-08-28:** uruchom równolegle wyłącznie SA-409 i SA-410, następnie SA-406 i SA-411…SA-414. Warstwa została zaimplementowana i przetestowana automatycznie; brakującym dowodem jest obecnie fizyczny HIL.
+
+### Rekomendacja historyczna — ZASTĄPIONA OPERACYJNIE 2026-08-28 decyzją właściciela
+
+**2026-08-24:** zrewiduj SA-610, a następnie rozpocznij SA-611. Zdefiniuj osobny `CaptureRecord/PacketBatch`; nie używaj `SampleBlock` jako ramki sieciowej i nie wysyłaj aktywnego ruchu do PLC lub magistrali. Plan pozostaje zachowany, lecz pierwszeństwo otrzymał CAN Device Lab.
+
+### Rekomendacja historyczna — ZASTĄPIONA 2026-08-24 decyzją właściciela
+
+Zrewiduj SA-701, rozstrzygnij stan istniejącego SA-301, a następnie rozpocznij SA-702. Zastąpione przez aktywny plan `industrial-protocol-analyzer.md`; Logic Analyzer przeniesiono do perspektywy.
+
+### Rekomendacja historyczna — ZASTĄPIONA 2026-08-24
+
+**2026-08-20:** rozpocznij od STAB-01, a następnie realizuj kolejność z `stabilization-current-functionality.md`. Stabilizacja została ukończona decyzją właściciela 2026-08-21.
 
 ### Rekomendacja historyczna — ZASTĄPIONA 2026-08-20
 

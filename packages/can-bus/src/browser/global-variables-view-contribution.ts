@@ -14,11 +14,11 @@ import { CommandRegistry, MenuModelRegistry, MAIN_MENU_BAR } from '@theia/core/l
 import {
     GLOBAL_VARIABLES_WIDGET_ID,
     GLOBAL_VARIABLES_WIDGET_LABEL,
-    type GlobalVariablesWidget
+    GlobalVariablesWidget
 } from './global-variables-widget';
 
 export const GlobalVariableCommands = {
-    OPEN_GLOBAL_VARIABLES: 'signal:open-global-variables'
+    OPEN_GLOBAL_VARIABLES: 'can-bus:open-global-variables'
 } as const;
 
 @injectable()
@@ -49,7 +49,7 @@ export class GlobalVariablesViewContribution extends AbstractViewContribution<Gl
         const analyzerMenuPath = [...MAIN_MENU_BAR, 'sample-menu'];
         menus.registerMenuAction(analyzerMenuPath, {
             commandId: GlobalVariableCommands.OPEN_GLOBAL_VARIABLES,
-            order: '3'
+            order: '4'
         });
     }
 }

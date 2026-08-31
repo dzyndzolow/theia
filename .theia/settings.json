@@ -23,41 +23,5 @@
   "ai-features.AiEnable.enableAI": true,
   "ai-features.agentMode.enabled": true,
   "ai-features.chat.bypassModelRequirement": false,
-  "ai-features.chat.defaultChatAgent": "Universal",
-  "ai-features.openAiCustom.customOpenAiModels": [
-    {
-      "id": "deepseek-v4-flash",
-      "model": "deepseek-chat",
-      "url": "https://api.deepseek.com/v1",
-      "apiKey": "sk-ed4f0bbb37d04357a52587eaa99e9da6",
-      "reasoningSupport": {
-        "supportedLevels": ["off", "low", "medium", "high"],
-        "defaultLevel": "medium"
-      }
-    },
-    {
-      "id": "deepseek-v4-pro",
-      "model": "deepseek-reasoner",
-      "url": "https://api.deepseek.com/v1",
-      "apiKey": "sk-ed4f0bbb37d04357a52587eaa99e9da6",
-      "reasoningSupport": {
-        "supportedLevels": ["off", "low", "medium", "high"],
-        "defaultLevel": "medium"
-      }
-    }
-  ],
-  "ai-features.languageModelAliases": {
-    "default/universal": {
-      "selectedModel": "openai/deepseek-v4-flash"
-    },
-    "default/code": {
-      "selectedModel": "openai/deepseek-v4-flash"
-    },
-    "default/code-completion": {
-      "selectedModel": "openai/deepseek-v4-flash"
-    },
-    "default/summarize": {
-      "selectedModel": "openai/deepseek-v4-flash"
-    }
-  }
+  "ai-features.chat.defaultChatAgent": "Universal"
 }

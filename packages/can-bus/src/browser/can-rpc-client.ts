@@ -17,18 +17,22 @@
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { Emitter, Event } from '@theia/core/lib/common';
 import { WebSocketConnectionProvider } from '@theia/core/lib/browser/messaging/ws-connection-provider';
-import { CanRpc, CanStatistics, CanInterfaceConfig, canServicePath } from '../common/can-protocol';
+import {
+    CanRpc,
+    CanStatistics,
+    CanInterfaceConfig,
+    CanRpcInterfaceInfo,
+    CanTxArmRequest,
+    CanFrame,
+    canServicePath
+} from '../common/can-protocol';
 
 /**
  * Frontend singleton owning the single RPC connection to the backend CAN service.
  *
  * Theia's `ChannelMultiplexer` allows only one channel per path per WebSocket
- * connection. Creating a proxy per widget (`WebSocketConnectionProvider.createProxy`)
- * therefore fails for every widget after the first one with
- * `Error: Another channel with the id '/can-bus/service' is already open.`,
- * leaving those widgets with a proxy whose RPC never connects. All widgets
- * (CAN Bus Analyzer, CAN ID Matrix) must share this single proxy and subscribe
- * to the binary frame stream instead of opening their own connection.
+ * connection. All widgets (CAN Bus Analyzer, CAN ID Matrix) share this single proxy
+ * and subscribe to the binary frame stream instead of opening their own connection.
  */
 @injectable()
 export class CanRpcClient {
@@ -38,6 +42,9 @@ export class CanRpcClient {
 
     protected readonly framesEmitter = new Emitter<ArrayBuffer>();
     readonly onBinaryFrames: Event<ArrayBuffer> = this.framesEmitter.event;
+
+    protected readonly interfacesChangedEmitter = new Emitter<void>();
+    readonly onDidChangeInterfaces: Event<void> = this.interfacesChangedEmitter.event;
 
     protected rpc: CanRpc | undefined;
 
@@ -61,5 +68,31 @@ export class CanRpcClient {
 
     getStatistics(): Promise<CanStatistics> {
         return this.getProxy().getStatistics();
+    }
+
+    getAvailableInterfaces(): Promise<CanRpcInterfaceInfo[]> {
+        return this.getProxy().getAvailableInterfaces();
+    }
+
+    async registerTcpDevice(host: string, port = 9751): Promise<CanRpcInterfaceInfo> {
+        const info = await this.getProxy().registerTcpDevice(host, port);
+        this.interfacesChangedEmitter.fire();
+        return info;
+    }
+
+    sendFrame(frame: CanFrame): Promise<boolean> {
+        return this.getProxy().sendFrame(frame);
+    }
+
+    armTransmit(request: CanTxArmRequest): Promise<void> {
+        return this.getProxy().armTransmit(request);
+    }
+
+    disarmTransmit(): Promise<void> {
+        return this.getProxy().disarmTransmit();
+    }
+
+    emergencyStop(): Promise<void> {
+        return this.getProxy().emergencyStop();
     }
 }
