@@ -12,6 +12,7 @@ import { expect } from 'chai';
 import { CanFeedbackServiceImpl } from './can-feedback-service';
 import { CanExperimentEventBus } from '../common/can-experiment-event-bus';
 import { CanFrame } from '../common/can-protocol';
+import { GapEvent } from '../common/can-experiment-protocol';
 
 describe('SA-412: CanFeedbackService', () => {
     let feedbackService: CanFeedbackServiceImpl;
@@ -80,5 +81,129 @@ describe('SA-412: CanFeedbackService', () => {
 
         const journal = eventBus.getJournal();
         expect(journal.size()).to.equal(1);
+    });
+
+    it('bounds baselineMap and activeMap to MAX_TRACKED_IDS with LRU eviction', () => {
+        const { MAX_FEEDBACK_TRACKED_IDS } = require('./can-feedback-service');
+        const emittedGapIds: string[] = [];
+        eventBus.onEvent(event => {
+            if (event.type === 'GAP') {
+                emittedGapIds.push(event.eventId);
+            }
+        });
+        feedbackService.startBaseline();
+
+        // Feed MAX_FEEDBACK_TRACKED_IDS + 50 distinct IDs during baseline
+        for (let i = 0; i < MAX_FEEDBACK_TRACKED_IDS + 50; i++) {
+            feedbackService.processRxFrame({
+                id: i,
+                extended: false,
+                rtr: false,
+                dlc: 1,
+                data: [0],
+                timestamp: 1000 + i,
+                interface: 'vcan0'
+            }, false);
+        }
+
+        expect(feedbackService.getTrackedCounts().baseline).to.equal(MAX_FEEDBACK_TRACKED_IDS);
+        const baselineStats = feedbackService.getBaselineStats();
+        expect(baselineStats.size).to.equal(MAX_FEEDBACK_TRACKED_IDS);
+        // Earliest IDs (0..49) should have been evicted
+        expect(baselineStats.has(0)).to.be.false;
+        expect(baselineStats.has(49)).to.be.false;
+        // Latest IDs should exist
+        expect(baselineStats.has(MAX_FEEDBACK_TRACKED_IDS + 49)).to.be.true;
+
+        feedbackService.freezeBaseline();
+
+        // Feed MAX_FEEDBACK_TRACKED_IDS + 50 distinct IDs during active phase
+        for (let i = 0; i < MAX_FEEDBACK_TRACKED_IDS + 50; i++) {
+            feedbackService.processRxFrame({
+                id: 100_000 + i,
+                extended: true,
+                rtr: false,
+                dlc: 1,
+                data: [1],
+                timestamp: 2000 + i,
+                interface: 'vcan0'
+            }, false);
+        }
+
+        expect(feedbackService.getTrackedCounts().active).to.equal(MAX_FEEDBACK_TRACKED_IDS);
+
+        const diag = feedbackService.getDiagnostics!();
+        expect(diag.completeness).to.equal('DEGRADED');
+        expect(diag.baselineDroppedCount).to.equal(50);
+        expect(diag.activeDroppedCount).to.equal(50);
+
+        // Crucial regression test: evicted baseline ID 0 must NOT trigger false RX_DELTA when re-appearing
+        const fbEvicted = feedbackService.processRxFrame({
+            id: 0,
+            extended: false,
+            rtr: false,
+            dlc: 1,
+            data: [0],
+            timestamp: 3000,
+            interface: 'vcan0'
+        }, false);
+        expect(fbEvicted).to.be.undefined;
+
+        // Evicted active ID 100_000 must NOT trigger a second RX_DELTA
+        const fbEvictedActive = feedbackService.processRxFrame({
+            id: 100_000,
+            extended: true,
+            rtr: false,
+            dlc: 1,
+            data: [1],
+            timestamp: 3001,
+            interface: 'vcan0'
+        }, false);
+        expect(fbEvictedActive).to.be.undefined;
+
+        // Verify that GAP events were recorded with stable eventIds and aggregated dropped counts
+        const journal = eventBus.getJournal();
+        const gaps = journal.filterByType<GapEvent>('GAP');
+        expect(gaps).to.have.lengthOf(2);
+
+        const baselineGap = gaps.find(g => g.eventId === 'gap:feedback:baseline:session-fb-test:cycle-1');
+        const activeGap = gaps.find(g => g.eventId === 'gap:feedback:active:session-fb-test:cycle-1');
+
+        expect(baselineGap).to.not.be.undefined;
+        expect(baselineGap!.droppedCount).to.equal(50);
+
+        expect(activeGap).to.not.be.undefined;
+        expect(activeGap!.droppedCount).to.equal(52);
+
+        // Reset via startBaseline restores COMPLETE state and 0 dropped counts
+        feedbackService.startBaseline();
+        const resetDiag = feedbackService.getDiagnostics!();
+        expect(resetDiag.completeness).to.equal('COMPLETE');
+        expect(resetDiag.baselineDroppedCount).to.equal(0);
+        expect(resetDiag.activeDroppedCount).to.equal(0);
+
+        // A new baseline attempt in the same session must create and emit a new GAP,
+        // rather than silently merging its loss into the previous attempt.
+        for (let i = 0; i < MAX_FEEDBACK_TRACKED_IDS + 1; i++) {
+            feedbackService.processRxFrame({
+                id: 200_000 + i,
+                extended: true,
+                rtr: false,
+                dlc: 1,
+                data: [2],
+                timestamp: 4000 + i,
+                interface: 'vcan0'
+            }, false);
+        }
+
+        const secondCycleGapId = 'gap:feedback:baseline:session-fb-test:cycle-2';
+        const gapsAfterRestart = journal.filterByType<GapEvent>('GAP');
+        expect(gapsAfterRestart).to.have.lengthOf(3);
+        expect(gapsAfterRestart.find(g => g.eventId === secondCycleGapId)?.droppedCount).to.equal(1);
+        expect(emittedGapIds).to.deep.equal([
+            'gap:feedback:baseline:session-fb-test:cycle-1',
+            'gap:feedback:active:session-fb-test:cycle-1',
+            secondCycleGapId
+        ]);
     });
 });

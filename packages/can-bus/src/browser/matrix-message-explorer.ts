@@ -5,6 +5,7 @@
 // *****************************************************************************
 
 import { CanFrame } from '../common/can-protocol';
+import { CAN_MATRIX_MAX_ROWS } from '../common/can-retention-policy';
 
 export interface MatrixMessage {
     readonly key: string;
@@ -29,12 +30,28 @@ interface MutableMatrixMessage {
  * the occurrence frequency used by the Matrix Message Explorer.
  */
 export class MatrixMessageExplorer {
+    public static readonly DEFAULT_MAX_MESSAGES = CAN_MATRIX_MAX_ROWS;
     protected readonly messages = new Map<string, MutableMatrixMessage>();
+    public readonly maxMessages: number;
+
+    constructor(maxMessages: number = MatrixMessageExplorer.DEFAULT_MAX_MESSAGES) {
+        if (!Number.isSafeInteger(maxMessages) || maxMessages < 1 || maxMessages > CAN_MATRIX_MAX_ROWS) {
+            throw new RangeError(`maxMessages must be a safe integer between 1 and ${CAN_MATRIX_MAX_ROWS}. Received: ${maxMessages}`);
+        }
+        this.maxMessages = maxMessages;
+    }
 
     public addFrame(frame: CanFrame, receivedAt = Date.now()): MatrixMessage {
         const key = MatrixMessageExplorer.createKey(frame);
         const existing = this.messages.get(key);
         if (!existing) {
+            while (this.messages.size >= this.maxMessages) {
+                const oldest = this.messages.keys().next().value;
+                if (oldest === undefined) {
+                    break;
+                }
+                this.messages.delete(oldest);
+            }
             const message: MutableMatrixMessage = {
                 key,
                 frame,
@@ -47,7 +64,8 @@ export class MatrixMessageExplorer {
             return message;
         }
 
-        const periodMs = Math.max(0, receivedAt - existing.lastReceivedAt);
+        this.messages.delete(key);
+        const periodMs = Number(Math.max(0, receivedAt - existing.lastReceivedAt).toFixed(3));
         existing.frame = frame;
         existing.count++;
         existing.periodMs = periodMs;
@@ -55,7 +73,16 @@ export class MatrixMessageExplorer {
             existing.frequencyHz = 1000 / periodMs;
         }
         existing.lastReceivedAt = receivedAt;
+        this.messages.set(key, existing);
         return existing;
+    }
+
+    public delete(key: string): boolean {
+        return this.messages.delete(key);
+    }
+
+    public has(key: string): boolean {
+        return this.messages.has(key);
     }
 
     public getMessages(): readonly MatrixMessage[] {

@@ -11,11 +11,21 @@
 import { injectable } from '@theia/core/shared/inversify';
 import { Disposable, Emitter, Event } from '@theia/core';
 import { CanFrame } from '../common/can-protocol';
-import { FeedbackEvent } from '../common/can-experiment-protocol';
+import { FeedbackEvent, GapEvent } from '../common/can-experiment-protocol';
 import { ManualFeedbackInput, IdTrafficStats } from '../common/can-feedback';
 import { CanExperimentEventBus } from '../common/can-experiment-event-bus';
 
 export const CanFeedbackService = Symbol('CanFeedbackService');
+
+export const MAX_FEEDBACK_TRACKED_IDS = 10_000;
+
+export type FeedbackCompleteness = 'COMPLETE' | 'DEGRADED';
+
+export interface FeedbackDiagnostics {
+    readonly completeness: FeedbackCompleteness;
+    readonly baselineDroppedCount: number;
+    readonly activeDroppedCount: number;
+}
 
 export interface CanFeedbackService extends Disposable {
     readonly onFeedbackRecorded: Event<FeedbackEvent>;
@@ -25,10 +35,14 @@ export interface CanFeedbackService extends Disposable {
     recordManualFeedback(input: ManualFeedbackInput): FeedbackEvent;
     processRxFrame(frame: CanFrame, isEcho: boolean): FeedbackEvent | undefined;
     getBaselineStats(): ReadonlyMap<number, IdTrafficStats>;
+    getTrackedCounts?(): { baseline: number; active: number };
+    getDiagnostics?(): FeedbackDiagnostics;
 }
 
 @injectable()
 export class CanFeedbackServiceImpl implements CanFeedbackService {
+    public static readonly MAX_TRACKED_IDS = MAX_FEEDBACK_TRACKED_IDS;
+
     private readonly onFeedbackRecordedEmitter = new Emitter<FeedbackEvent>();
     readonly onFeedbackRecorded: Event<FeedbackEvent> = this.onFeedbackRecordedEmitter.event;
 
@@ -39,6 +53,11 @@ export class CanFeedbackServiceImpl implements CanFeedbackService {
     private baselineFrozen = false;
     private isDisposed = false;
 
+    private completeness: FeedbackCompleteness = 'COMPLETE';
+    private baselineDroppedCount = 0;
+    private activeDroppedCount = 0;
+    private feedbackCycle = 0;
+
     private readonly baselineMap = new Map<number, { count: number; firstSeenNs: bigint; lastSeenNs: bigint; lastPayload: number[] }>();
     private readonly activeMap = new Map<number, { count: number; firstSeenNs: bigint; lastSeenNs: bigint; lastPayload: number[] }>();
 
@@ -48,16 +67,49 @@ export class CanFeedbackServiceImpl implements CanFeedbackService {
     }
 
     startBaseline(): void {
+        this.feedbackCycle++;
         this.baselineMap.clear();
         this.activeMap.clear();
         this.isCollectingBaseline = true;
         this.baselineFrozen = false;
+        this.completeness = 'COMPLETE';
+        this.baselineDroppedCount = 0;
+        this.activeDroppedCount = 0;
     }
 
     freezeBaseline(): ReadonlyMap<number, IdTrafficStats> {
         this.isCollectingBaseline = false;
         this.baselineFrozen = true;
         return this.getBaselineStats();
+    }
+
+    getTrackedCounts(): { baseline: number; active: number } {
+        return { baseline: this.baselineMap.size, active: this.activeMap.size };
+    }
+
+    getDiagnostics(): FeedbackDiagnostics {
+        return {
+            completeness: this.completeness,
+            baselineDroppedCount: this.baselineDroppedCount,
+            activeDroppedCount: this.activeDroppedCount
+        };
+    }
+
+    private markDegraded(phase: 'BASELINE' | 'ACTIVE', nowNs: bigint): void {
+        this.completeness = 'DEGRADED';
+        if (this.eventBus && this.sessionId) {
+            const stableEventId = `gap:feedback:${phase.toLowerCase()}:${this.sessionId}:cycle-${this.feedbackCycle}`;
+            const gapEvent: GapEvent = {
+                eventId: stableEventId,
+                sessionId: this.sessionId,
+                timestampMonotonicNs: nowNs,
+                wallClockIso: new Date().toISOString(),
+                type: 'GAP',
+                droppedCount: 1,
+                reason: `Feedback ID cache capacity reached during ${phase.toLowerCase()} phase (${CanFeedbackServiceImpl.MAX_TRACKED_IDS} IDs). Automatic RX_DELTA is degraded.`
+            };
+            this.eventBus.recordGap(gapEvent);
+        }
     }
 
     recordManualFeedback(input: ManualFeedbackInput): FeedbackEvent {
@@ -100,6 +152,15 @@ export class CanFeedbackServiceImpl implements CanFeedbackService {
         if (this.isCollectingBaseline) {
             const entry = this.baselineMap.get(id);
             if (!entry) {
+                while (this.baselineMap.size >= CanFeedbackServiceImpl.MAX_TRACKED_IDS) {
+                    const oldest = this.baselineMap.keys().next().value;
+                    if (oldest === undefined) {
+                        break;
+                    }
+                    this.baselineMap.delete(oldest);
+                    this.baselineDroppedCount++;
+                    this.markDegraded('BASELINE', nowNs);
+                }
                 this.baselineMap.set(id, {
                     count: 1,
                     firstSeenNs: nowNs,
@@ -107,9 +168,11 @@ export class CanFeedbackServiceImpl implements CanFeedbackService {
                     lastPayload: payload
                 });
             } else {
+                this.baselineMap.delete(id);
                 entry.count++;
                 entry.lastSeenNs = nowNs;
                 entry.lastPayload = payload;
+                this.baselineMap.set(id, entry);
             }
             return undefined;
         }
@@ -121,6 +184,15 @@ export class CanFeedbackServiceImpl implements CanFeedbackService {
             // Track active traffic
             const entry = this.activeMap.get(id);
             if (!entry) {
+                while (this.activeMap.size >= CanFeedbackServiceImpl.MAX_TRACKED_IDS) {
+                    const oldest = this.activeMap.keys().next().value;
+                    if (oldest === undefined) {
+                        break;
+                    }
+                    this.activeMap.delete(oldest);
+                    this.activeDroppedCount++;
+                    this.markDegraded('ACTIVE', nowNs);
+                }
                 this.activeMap.set(id, {
                     count: 1,
                     firstSeenNs: nowNs,
@@ -128,12 +200,15 @@ export class CanFeedbackServiceImpl implements CanFeedbackService {
                     lastPayload: payload
                 });
             } else {
+                this.activeMap.delete(id);
                 entry.count++;
                 entry.lastSeenNs = nowNs;
                 entry.lastPayload = payload;
+                this.activeMap.set(id, entry);
             }
 
-            if (isNewId) {
+            // Suppress automatic RX_DELTA if degraded to prevent false positives
+            if (this.completeness === 'COMPLETE' && isNewId) {
                 const nowIso = new Date().toISOString();
                 const eventId = `fb-rx-delta-${++this.feedbackCount}-${nowNs}`;
 
@@ -184,5 +259,8 @@ export class CanFeedbackServiceImpl implements CanFeedbackService {
         this.baselineMap.clear();
         this.activeMap.clear();
         this.eventBus = undefined;
+        this.completeness = 'COMPLETE';
+        this.baselineDroppedCount = 0;
+        this.activeDroppedCount = 0;
     }
 }

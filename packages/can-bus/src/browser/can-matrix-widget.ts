@@ -11,14 +11,14 @@
 import '../../src/browser/style/can-widget.css';
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { ApplicationShell, BaseWidget } from '@theia/core/lib/browser';
-import { CanFrame, CanBinaryDecoder } from '../common/can-protocol';
+import { CanFrame, CanBinaryDecoder, validateCanBinaryBatch } from '../common/can-protocol';
 import { FramePayloadInspector, PayloadSelection } from './frame-payload-inspector';
 import { MatrixMessageExplorer } from './matrix-message-explorer';
 import { TypedFieldDecoder } from './typed-field-decoder';
 import { CanRpcClient } from './can-rpc-client';
 import { CanWidget } from './can-widget';
 import { CanInterfaceReservation } from './can-interface-reservation';
-import { CAN_MATRIX_WORKER_SOURCE, CanMatrixWorkerResponse, CanMatrixWorkerUpdate } from './can-matrix-worker';
+import { CAN_MATRIX_WORKER_SOURCE, CanMatrixWorkerResponse, CanMatrixWorkerUpdate, CAN_MATRIX_MAX_ROWS } from './can-matrix-worker';
 import { GlobalVariableRegistry, VariableId, VariableType } from '@theia/signal-core';
 import { CanVariableBridge, CanBindingFieldType } from './can-variable-bridge';
 
@@ -85,8 +85,20 @@ export class CanMatrixWidget extends BaseWidget {
     protected readonly typedFieldDecoder = new TypedFieldDecoder();
     protected selectedKey: string | undefined;
     protected highlightChangedBytes = true;
+    public static readonly MAX_ROWS = CAN_MATRIX_MAX_ROWS;
+    public static readonly MAX_OUTSTANDING_WORKER_BATCHES = 16;
     protected matrixWorker: Worker | undefined;
     protected matrixWorkerUrl: string | undefined;
+    protected outstandingWorkerBatches = 0;
+    protected droppedWorkerBatches = 0;
+
+    public getOutstandingWorkerBatches(): number {
+        return this.outstandingWorkerBatches;
+    }
+
+    public getDroppedWorkerBatches(): number {
+        return this.droppedWorkerBatches;
+    }
 
     protected rafId: number | undefined;
     protected dirty = false;
@@ -231,16 +243,25 @@ export class CanMatrixWidget extends BaseWidget {
             URL.revokeObjectURL(this.matrixWorkerUrl);
             this.matrixWorkerUrl = undefined;
         }
+        this.outstandingWorkerBatches = 0;
     }
 
     public addBinaryChunk(chunk: ArrayBuffer): void {
         if (this.isPaused || !this.isCapturing) { return; }
+        const validation = validateCanBinaryBatch(chunk);
+        if (!validation.valid) { return; }
         if (this.matrixWorker) {
+            if (this.outstandingWorkerBatches >= CanMatrixWidget.MAX_OUTSTANDING_WORKER_BATCHES) {
+                this.droppedWorkerBatches++;
+                return;
+            }
             try {
                 const workerChunk = chunk.slice(0);
+                this.outstandingWorkerBatches++;
                 this.matrixWorker.postMessage({ type: 'PROCESS_BATCH', chunk: workerChunk }, [workerChunk]);
                 return;
             } catch {
+                this.outstandingWorkerBatches = 0;
                 this.stopMatrixWorker();
             }
         }
@@ -268,10 +289,35 @@ export class CanMatrixWidget extends BaseWidget {
         return true;
     }
 
+    /** Evicts a row from the matrix, explorer, and DOM. */
+    public evictRow(key: string): void {
+        this.matrixMap.delete(key);
+        this.explorer.delete(key);
+        const tr = this.rowElementsMap.get(key);
+        if (tr) {
+            tr.remove();
+            this.rowElementsMap.delete(key);
+        }
+        if (this.selectedKey === key) {
+            this.selectedKey = undefined;
+            this.payloadInspector.setFrame(undefined);
+            this.typedFieldDecoder.setFrame(undefined);
+        }
+        this.dirty = true;
+    }
+
     /** Applies pre-aggregated row updates received from the worker. */
     protected applyWorkerUpdates(response: CanMatrixWorkerResponse): void {
+        if (this.outstandingWorkerBatches > 0) {
+            this.outstandingWorkerBatches--;
+        }
         if (response.type !== 'UPDATES') {
             return;
+        }
+        if (response.evictedKeys && Array.isArray(response.evictedKeys)) {
+            for (const key of response.evictedKeys) {
+                this.evictRow(key);
+            }
         }
         for (const update of response.updates) {
             if (!this.acceptsFrame(update)) {
@@ -285,11 +331,19 @@ export class CanMatrixWidget extends BaseWidget {
     protected applyWorkerUpdate(update: CanMatrixWorkerUpdate): void {
         const row = this.matrixMap.get(update.key);
         if (!row) {
+            while (this.matrixMap.size >= CanMatrixWidget.MAX_ROWS) {
+                const oldestKey = this.matrixMap.keys().next().value;
+                if (oldestKey === undefined) {
+                    break;
+                }
+                this.evictRow(oldestKey);
+            }
             this.matrixMap.set(update.key, {
                 ...update,
                 hexId: '0x' + update.id.toString(16).toUpperCase().padStart(update.extended ? 8 : 3, '0')
             });
         } else {
+            this.matrixMap.delete(update.key);
             row.data = update.data;
             row.prevData = update.prevData;
             row.changedMask = update.changedMask;
@@ -303,6 +357,7 @@ export class CanMatrixWidget extends BaseWidget {
             row.dlc = update.dlc;
             row.rtr = update.rtr;
             row.interface = update.interface;
+            this.matrixMap.set(update.key, row);
         }
         if (update.key === this.selectedKey) {
             const selected = this.matrixMap.get(update.key)!;
@@ -331,6 +386,13 @@ export class CanMatrixWidget extends BaseWidget {
         let row = this.matrixMap.get(message.key);
 
         if (!row) {
+            while (this.matrixMap.size >= CanMatrixWidget.MAX_ROWS) {
+                const oldestKey = this.matrixMap.keys().next().value;
+                if (oldestKey === undefined) {
+                    break;
+                }
+                this.evictRow(oldestKey);
+            }
             row = {
                 key: message.key,
                 id: frame.id,
@@ -352,9 +414,10 @@ export class CanMatrixWidget extends BaseWidget {
             };
             this.matrixMap.set(message.key, row);
         } else {
+            this.matrixMap.delete(message.key);
             row.count = message.count;
-            row.deltaMs = now - row.lastTimestamp;
-            row.freqHz = Math.round(message.frequencyHz);
+            row.deltaMs = Number((now - row.lastTimestamp).toFixed(3));
+            row.freqHz = Number(message.frequencyHz.toFixed(3));
             row.lastTimestamp = now;
             row.dlc = frame.dlc;
             row.interface = frame.interface || row.interface;
@@ -378,6 +441,7 @@ export class CanMatrixWidget extends BaseWidget {
             if (dataChanged) {
                 row.rowLastChangedMs = now;
             }
+            this.matrixMap.set(message.key, row);
         }
         if (message.key === this.selectedKey) {
             this.payloadInspector.setFrame(frame, true);
@@ -491,8 +555,8 @@ export class CanMatrixWidget extends BaseWidget {
                 <th style="width:55px">Type</th>
                 <th style="width:45px">DLC</th>
                 <th style="width:75px">Count</th>
-                <th style="width:75px">Freq (Hz)</th>
-                <th style="width:78px">Period (ms)</th>
+                <th class="can-col-freq" style="width:95px;text-align:right;">Freq (Hz)</th>
+                <th class="can-col-period" style="width:105px;text-align:right;">Period (ms)</th>
                 <th style="width:235px">Data Payload (Hex) <label class="can-payload-change-toggle"
                     title="Compare each payload with the preceding frame of this CAN ID"><input type="checkbox" checked> Highlight changes</label></th>
                 <th style="width:105px">ASCII</th>
@@ -592,6 +656,16 @@ export class CanMatrixWidget extends BaseWidget {
             this.countValEl.textContent = String(this.matrixMap.size);
         }
 
+        // Defensive purge for any orphan DOM rows not in matrixMap
+        if (this.rowElementsMap.size > this.matrixMap.size) {
+            for (const [key, tr] of this.rowElementsMap.entries()) {
+                if (!this.matrixMap.has(key)) {
+                    tr.remove();
+                    this.rowElementsMap.delete(key);
+                }
+            }
+        }
+
         const now = Date.now();
         const sortedRows = Array.from(this.matrixMap.values()).sort((a, b) => a.id - b.id);
         for (const row of sortedRows) {
@@ -641,14 +715,20 @@ export class CanMatrixWidget extends BaseWidget {
             const int8Formatted = row.data
                 .map(b => `<span>${b < 0x80 ? b : b - 0x100}</span>`)
                 .join('');
+            const freqFormatted = row.freqHz > 0
+                ? row.freqHz.toFixed(3)
+                : '0.000';
+            const periodFormatted = row.deltaMs > 0
+                ? row.deltaMs.toFixed(3)
+                : '0.000';
 
             tr.innerHTML = `
                 <td style="font-family:monospace;font-weight:bold;color:#4ec9b0;">${row.hexId}</td>
                 <td><span class="can-tag ${row.extended ? 'ext' : 'std'}">${row.extended ? 'EXT' : 'STD'}</span></td>
                 <td>${row.dlc}</td>
                 <td>${row.count}</td>
-                <td style="color:#dcdcaa;">${row.freqHz} Hz</td>
-                <td>${row.deltaMs} ms</td>
+                <td class="can-col-freq" style="text-align:right;color:#dcdcaa;">${freqFormatted} Hz</td>
+                <td class="can-col-period" style="text-align:right;">${periodFormatted} ms</td>
                 <td style="font-family:monospace;">${dataFormatted}</td>
                 <td style="font-family:monospace;color:#ce9178;">${asciiFormatted}</td>
                 <td class="can-decoded-byte-values can-decoded-uint8">${uint8Formatted}</td>

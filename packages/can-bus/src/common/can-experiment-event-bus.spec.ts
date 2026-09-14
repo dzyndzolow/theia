@@ -10,7 +10,7 @@
 
 import { expect } from 'chai';
 import { CanExperimentEventBus, ExperimentJournal } from './can-experiment-event-bus';
-import { StateChangeEvent, FeedbackEvent, ExperimentEvent } from './can-experiment-protocol';
+import { StateChangeEvent, FeedbackEvent, ExperimentEvent, GapEvent } from './can-experiment-protocol';
 
 describe('SA-410: CanExperimentEventBus & ExperimentJournal', () => {
     let bus: CanExperimentEventBus;
@@ -106,5 +106,77 @@ describe('SA-410: CanExperimentEventBus & ExperimentJournal', () => {
         const subset = journal.queryTimeRange(2000n, 4000n);
         expect(subset).to.have.lengthOf(3);
         expect(subset.map(e => e.eventId)).to.deep.equal(['evt-2', 'evt-3', 'evt-4']);
+    });
+
+    it('aggregates interleaved gaps by stable eventId and emits onEvent only on creation', () => {
+        const eventsFired: ExperimentEvent[] = [];
+        bus.onEvent(e => eventsFired.push(e));
+
+        // Gap A - first occurrence
+        bus.recordGap({
+            eventId: 'gap:phase-a',
+            sessionId: 'ses-1',
+            timestampMonotonicNs: 1000n,
+            wallClockIso: '2026-08-28T09:00:00.000Z',
+            type: 'GAP',
+            droppedCount: 5,
+            reason: 'Loss in phase A'
+        });
+
+        // Gap B - first occurrence (interleaved)
+        bus.recordGap({
+            eventId: 'gap:phase-b',
+            sessionId: 'ses-1',
+            timestampMonotonicNs: 1100n,
+            wallClockIso: '2026-08-28T09:00:00.100Z',
+            type: 'GAP',
+            droppedCount: 2,
+            reason: 'Loss in phase B'
+        });
+
+        // Gap A - second occurrence (interleaved after Gap B)
+        bus.recordGap({
+            eventId: 'gap:phase-a',
+            sessionId: 'ses-1',
+            timestampMonotonicNs: 1200n,
+            wallClockIso: '2026-08-28T09:00:00.200Z',
+            type: 'GAP',
+            droppedCount: 3,
+            reason: 'Loss in phase A'
+        });
+
+        // Gap B - second occurrence
+        bus.recordGap({
+            eventId: 'gap:phase-b',
+            sessionId: 'ses-1',
+            timestampMonotonicNs: 1300n,
+            wallClockIso: '2026-08-28T09:00:00.300Z',
+            type: 'GAP',
+            droppedCount: 7,
+            reason: 'Loss in phase B'
+        });
+
+        // Check that only 2 events were fired to listeners (1 for A, 1 for B)
+        expect(eventsFired).to.have.lengthOf(2);
+        expect(eventsFired[0].eventId).to.equal('gap:phase-a');
+        expect(eventsFired[1].eventId).to.equal('gap:phase-b');
+
+        // Check journal aggregation
+        const journal = bus.getJournal();
+        expect(journal.getGapEventCount()).to.equal(2);
+
+        const allGaps = journal.filterByType<GapEvent>('GAP');
+        expect(allGaps).to.have.lengthOf(2);
+
+        const foundA = allGaps.find(g => g.eventId === 'gap:phase-a');
+        const foundB = allGaps.find(g => g.eventId === 'gap:phase-b');
+
+        expect(foundA).to.not.be.undefined;
+        expect(foundA!.droppedCount).to.equal(8); // 5 + 3
+        expect(foundA!.timestampMonotonicNs).to.equal(1200n);
+
+        expect(foundB).to.not.be.undefined;
+        expect(foundB!.droppedCount).to.equal(9); // 2 + 7
+        expect(foundB!.timestampMonotonicNs).to.equal(1300n);
     });
 });
